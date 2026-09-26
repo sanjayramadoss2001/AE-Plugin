@@ -2737,7 +2737,7 @@ function _0x55ed() {
     "border-red-300/18\x20bg-[linear-gradient(180deg,hsl(0_72%_55%_/_0.16),hsl(0_72%_55%_/_0.08))]",
     "xmlBase",
     "createRoot",
-    "DRIPZ",
+    "LEO",
     "placeholder:text-red-100/35",
     "markLayoutEffectsStarted",
     "drop",
@@ -74870,7 +74870,7 @@ var kK = Object[_0x332234(0xf4f)],
                 _0xf553ed["jsx"]("h1", {
                   className: _0x1554d2(0xa6b),
                   "data-text": _0x1554d2(0xab7),
-                  children: "DRIPZ",
+                  children: "LEO",
                 }),
                 _0xf553ed[_0x1554d2(0x7b7)](_0x1554d2(0x487), {
                   className: _0x1554d2(0x1106),
