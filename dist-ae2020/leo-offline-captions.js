@@ -39,14 +39,20 @@
   var KEY_LANGUAGE = "leo_offline_language";
   var KEY_NO_OVERLAP = "leo_caption_no_overlap";
   var KEY_WORD_FADE = "leo_caption_word_fade"; // legacy checkbox, migrated to KEY_ANIMATION
+  var KEY_CAPTION_PRESET = "leo_caption_text_preset"; // JSON { name, path } of an .ffx applied to every caption
   var KEY_ANIMATION = "leo_caption_animation"; // "none" | "fade" | "fadeup", asked before each Generate
   var ANIMATIONS = [
     { id: "none", label: "Regular", note: "Plain captions, no word animation" },
-    { id: "fade", label: "Fade in", note: "Each word fades in as it is spoken" },
-    { id: "fadeup", label: "Fade up", note: "Each word fades in and rises into place" },
+    { id: "fade", label: "Fade Up Words", note: "Like After Effects' Fade Up Words, each word fades in as it is spoken" },
+    { id: "fadeup", label: "Rise Up Words", note: "Each word fades in and slides up into place" },
   ];
 
   function currentAnimation() {
+    // v2: "Fade up" used to add a rise; users who picked it wanted AE's Fade Up Words look -> "fade".
+    if (readSetting("leo_caption_animation_v2", "") !== "1") {
+      if (readSetting(KEY_ANIMATION, "") === "fadeup") writeSetting(KEY_ANIMATION, "fade");
+      writeSetting("leo_caption_animation_v2", "1");
+    }
     var id = readSetting(KEY_ANIMATION, "");
     if (id === "none" || id === "fade" || id === "fadeup") return id;
     return readSetting(KEY_WORD_FADE, "1") === "0" ? "none" : "fade";
@@ -194,6 +200,14 @@
       language: readSetting(KEY_LANGUAGE, "auto"),
       noOverlap: true, // exact speech timing is always on (minimal UI)
       animation: currentAnimation(),
+      captionPreset: (function () {
+        try {
+          var v = JSON.parse(readSetting(KEY_CAPTION_PRESET, "null"));
+          return v && v.path ? v : null;
+        } catch (e) {
+          return null;
+        }
+      })(),
       animations: ANIMATIONS,
       cleanVoice: readSetting(KEY_CLEAN_VOICE, "1") !== "0",
       captionStyle: currentStyleId(),
@@ -233,6 +247,11 @@
 
   function setCleanVoice(on) {
     writeSetting(KEY_CLEAN_VOICE, on ? "1" : "0");
+    notify();
+  }
+
+  function setCaptionPreset(preset) {
+    writeSetting(KEY_CAPTION_PRESET, preset && preset.path ? JSON.stringify({ name: preset.name, path: preset.path }) : "null");
     notify();
   }
 
@@ -1004,6 +1023,7 @@
     setLanguage: setLanguage,
     setNoOverlap: setNoOverlap,
     setAnimation: setAnimation,
+    setCaptionPreset: setCaptionPreset,
     setCleanVoice: setCleanVoice,
     setCaptionStyle: setCaptionStyle,
     installAI: installAI,

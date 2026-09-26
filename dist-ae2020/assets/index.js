@@ -70863,7 +70863,7 @@ var kK = Object[_0x332234(0xf4f)],
                     JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) +
                     "," +
                     JSON.stringify(_leoItems) +
-                    ",0.15," +
+                    ",0.25," +
                     JSON.stringify(_leoCaps2.getStatus().animation) +
                     ")",
                 )) || "",
@@ -70876,6 +70876,35 @@ var kK = Object[_0x332234(0xf4f)],
                 });
             }
           } catch (_leoFadeErr) {}
+          try {
+            const _leoCp = window.LeoOfflineCaptions && window.LeoOfflineCaptions.getStatus().captionPreset;
+            if (_leoCp && _leoCp.path) {
+              const _leoCpRes = String(
+                (await _0x5710e8(
+                  "leoApplyPresetToCaptionGroup(" +
+                    JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) +
+                    "," +
+                    JSON.stringify(_leoCp.path) +
+                    ")",
+                )) || "",
+              );
+              if (/^(error|evalscript error)/i.test(_leoCpRes.trim()))
+                _0x43c87d["error"]("Caption text preset failed", {
+                  description: /^EvalScript error/i.test(_leoCpRes)
+                    ? "Restart After Effects to load text presets."
+                    : _leoCpRes,
+                });
+            }
+          } catch (_leoCpErr) {}
+          // Adding animators/presets twirls the caption layers open; leave the timeline collapsed.
+          try {
+            const _leoSt = window.LeoOfflineCaptions && window.LeoOfflineCaptions.getStatus();
+            if (_leoSt && ((_leoSt.animation && _leoSt.animation !== "none") || _leoSt.captionPreset)) {
+              await _0x5710e8(
+                "leoCollapseCaptionGroup(" + JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) + ")",
+              );
+            }
+          } catch (_leoTidyErr) {}
           const _0x4696e2 = {
             renderPlanLength: _0x5b8448[_0xdc8fe0(0xe62)],
             previousAppliedCount: _0x4e96e4,
@@ -71161,6 +71190,7 @@ var kK = Object[_0x332234(0xf4f)],
             }),
           ],
         }),
+        false && // LEO: Text Presets moved to its own Presets tab
         _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
           className:
             "relative\x20overflow-hidden\x20rounded-xl\x20border\x20border-violet-300/18\x20bg-[linear-gradient(180deg,hsl(220_18%_16%_/_0.92),hsl(220_18%_12%_/_0.98))]\x20shadow-[inset_0_1px_0_hsl(255_255_255_/_0.04),0_18px_30px_hsl(220_35%_5%_/_0.24)]",
@@ -81561,6 +81591,7 @@ var kK = Object[_0x332234(0xf4f)],
   const _0x16a70a = [
       "layers",
       _0xd83adf(0x11d5),
+      "presets",
       "templates",
       "beats",
       _0xd83adf(0x52d),
@@ -81887,7 +81918,11 @@ var kK = Object[_0x332234(0xf4f)],
                   J["jsx"](_0x3d6016, { className: "text-[13px] font-mono", children: "Caption animation" }),
                   J["jsx"](_0x4e156a, {
                     className: "text-[11px] font-mono",
-                    children: "How should the words appear? Your choice is remembered and used for Rebuild too.",
+                    children:
+                      "How should the words appear? Your choice is remembered and used for Rebuild too." +
+                      (offline && offline.status && offline.status.captionPreset
+                        ? " Text preset: " + offline.status.captionPreset.name + " (change it in the Presets tab)."
+                        : ""),
                   }),
                 ],
               }),
@@ -82090,6 +82125,193 @@ var kK = Object[_0x332234(0xf4f)],
               "h-8 w-full text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
             children: "Download " + selected.label + " model (" + downloadMB + " MB, one time)",
           }),
+      ],
+    });
+  }
+  // Presets tab: browse After Effects text presets (.ffx), apply to selected layers or use for captions.
+  const _leoIconPresets = _0x356675("LeoType", [
+    ["path", { d: "M4 7V4h16v3", key: "leo-ty-a" }],
+    ["path", { d: "M9 20h6", key: "leo-ty-b" }],
+    ["path", { d: "M12 4v16", key: "leo-ty-c" }],
+  ]);
+  let _leoPresetCache = null; // loaded once per panel session
+  function _leoPresetsPanel() {
+    const J = _0xf553ed;
+    const R = _0x4c7c86;
+    const caps = window.LeoOfflineCaptions || null;
+    const [list, setList] = R["useState"](_leoPresetCache);
+    const [error, setError] = R["useState"]("");
+    const [query, setQuery] = R["useState"]("");
+    const [category, setCategory] = R["useState"]("Animate In");
+    const [picked, setPicked] = R["useState"](null);
+    const [busy, setBusy] = R["useState"](false);
+    const [status, setStatus] = R["useState"](() => (caps ? caps.getStatus() : null));
+    R["useEffect"](() => (caps ? caps.subscribe(setStatus) : undefined), []);
+    const load = async (force) => {
+      if (_leoPresetCache && !force) return;
+      setError("");
+      try {
+        const res = String((await _0xc1c86d("leoListTextPresets()")) || "");
+        if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Presets tab.");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+        _leoPresetCache = JSON.parse(res || "[]");
+        setList(_leoPresetCache);
+      } catch (e) {
+        setError(e && e.message ? e.message : String(e));
+        setList([]);
+      }
+    };
+    R["useEffect"](() => {
+      load(false);
+    }, []);
+    const hint = "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85";
+    const all = list || [];
+    const categories = [];
+    all.forEach((p) => {
+      if (categories.indexOf(p.g) === -1) categories.push(p.g);
+    });
+    if (categories.length && categories.indexOf(category) === -1 && category !== "All") setCategory(categories[0]);
+    const q = query.trim().toLowerCase();
+    const shown = all.filter((p) => (q ? p.n.toLowerCase().indexOf(q) !== -1 : category === "All" || p.g === category));
+    const capPreset = status && status.captionPreset;
+    const run = async (label, script) => {
+      setBusy(true);
+      try {
+        const res = String((await _0xc1c86d(script)) || "");
+        if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Presets tab.");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+        _0x43c87d["success"](res || label);
+      } catch (e) {
+        _0x43c87d["error"](label + " failed", { description: e && e.message ? e.message : String(e) });
+      } finally {
+        setBusy(false);
+      }
+    };
+    const chip = (name) =>
+      J["jsx"](
+        "button",
+        {
+          type: "button",
+          onClick: () => {
+            setCategory(name);
+            setQuery("");
+          },
+          className: "text-[9px] font-mono",
+          style: {
+            padding: "4px 8px",
+            borderRadius: 7,
+            border: "1px solid " + (name === category && !q ? "hsl(270 85% 65% / 0.55)" : "hsl(220 15% 40% / 0.35)"),
+            background: name === category && !q ? "hsl(270 85% 60% / 0.18)" : "hsl(220 18% 16% / 0.8)",
+            color: name === category && !q ? "hsl(270 100% 92%)" : "hsl(220 15% 75%)",
+            cursor: "pointer",
+          },
+          children: name,
+        },
+        name,
+      );
+    return J["jsxs"]("div", {
+      className: "space-y-2",
+      children: [
+        J["jsxs"]("div", {
+          className: hint,
+          style: { marginTop: 0 },
+          children: [
+            capPreset
+              ? "Captions use: " + capPreset.name + ". "
+              : "Pick a preset, then apply it to selected text layers or use it for every caption. ",
+            capPreset &&
+              J["jsx"]("button", {
+                type: "button",
+                onClick: () => caps.setCaptionPreset(null),
+                style: { textDecoration: "underline", cursor: "pointer", color: "hsl(0 80% 75%)" },
+                children: "Stop using for captions",
+              }),
+          ],
+        }),
+        J["jsx"](_0x4ec336, {
+          placeholder: "Search all presets (e.g. fade, typewriter, pop)...",
+          value: query,
+          onChange: (e) => setQuery(e.target.value),
+          className: "h-9 text-[10px] bg-secondary/55 border-border/80 font-mono focus-visible:ring-primary/30",
+        }),
+        !q &&
+          categories.length > 0 &&
+          J["jsx"]("div", {
+            style: { display: "flex", flexWrap: "wrap", gap: 6 },
+            children: ["All"].concat(categories).map(chip),
+          }),
+        list === null && J["jsx"]("div", { className: hint, children: "Loading After Effects text presets..." }),
+        error && J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: error }),
+        list !== null &&
+          !shown.length &&
+          !error &&
+          J["jsx"]("div", { className: hint, children: q ? "No presets match your search." : "No presets found." }),
+        J["jsx"]("div", {
+          style: { maxHeight: 340, overflowY: "auto", paddingRight: 2 },
+          children: J["jsx"]("div", {
+            className: "grid grid-cols-2 gap-2",
+            children: shown.map((p) => {
+              const active = picked && picked.p === p.p;
+              const isCaption = capPreset && capPreset.path === p.p;
+              return J["jsxs"](
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setPicked(p),
+                  title: p.p,
+                  className: active
+                    ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+                    : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+                  style: { textAlign: "left", cursor: "pointer", opacity: active ? 1 : 0.85 },
+                  children: [
+                    J["jsx"]("div", {
+                      className: "text-[11px] font-mono font-semibold text-foreground",
+                      children: (active ? "● " : "") + p.n,
+                    }),
+                    J["jsx"]("div", {
+                      className: hint,
+                      children: isCaption ? "Used for captions" : p.g,
+                    }),
+                  ],
+                },
+                p.p,
+              );
+            }),
+          }),
+        }),
+        picked &&
+          J["jsxs"]("div", {
+            className: "grid grid-cols-2 gap-2",
+            children: [
+              J["jsx"](_0x14db90, {
+                variant: "secondary",
+                disabled: busy,
+                onClick: () => run("Apply preset", "leoApplyPresetToSelected(" + JSON.stringify(picked.p) + ")"),
+                className:
+                  "h-9 text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
+                children: "Apply to selected layers",
+              }),
+              J["jsx"](_0x14db90, {
+                disabled: busy || !caps,
+                onClick: () => {
+                  caps.setCaptionPreset({ name: picked.n, path: picked.p });
+                  _0x43c87d["success"]("Captions will use " + picked.n, {
+                    description: "Applied on the next Generate Captions or Rebuild.",
+                  });
+                },
+                className:
+                  "group relative h-9 w-full overflow-hidden rounded-xl text-[10px] font-mono gap-1.5 text-primary-foreground bg-[linear-gradient(90deg,hsl(155_70%_48%),hsl(var(--primary)),hsl(190_90%_60%))]",
+                children: capPreset && capPreset.path === picked.p ? "✓ Used for captions" : "Use for captions",
+              }),
+            ],
+          }),
+        J["jsx"]("button", {
+          type: "button",
+          onClick: () => load(true),
+          className: hint,
+          style: { textDecoration: "underline", cursor: "pointer" },
+          children: "Reload presets",
+        }),
       ],
     });
   }
@@ -83337,6 +83559,10 @@ var kK = Object[_0x332234(0xf4f)],
             label: "Shortcuts",
             icon: _0xf553ed["jsx"](_0x3f099d, { size: 0xf }),
           },
+          presets: {
+            label: "Presets",
+            icon: _0xf553ed["jsx"](_leoIconPresets, { size: 0xf }),
+          },
           audio: {
             label: "Audio",
             icon: _0xf553ed["jsx"](_leoIconAudio, { size: 0xf }),
@@ -84204,6 +84430,12 @@ var kK = Object[_0x332234(0xf4f)],
                     _0x3b10e3 === "graphs" &&
                       _0xf553ed[_0x2de660(0x72a)](_0x41b388, {
                         children: _0xf553ed[_0x2de660(0x72a)](_0x540821, {}),
+                      }),
+                    _0x3b10e3 === "presets" &&
+                      _0xf553ed["jsx"](_0x4dc2f3, {
+                        title: "Text Presets",
+                        icon: _0xf553ed["jsx"](_leoIconPresets, { size: 0xe }),
+                        children: _0xf553ed["jsx"](_leoPresetsPanel, {}),
                       }),
                     _0x3b10e3 === "audio" &&
                       _0xf553ed["jsx"](_0x4dc2f3, {
