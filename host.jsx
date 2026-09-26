@@ -5735,3 +5735,186 @@ function applyEasingToSelectedKeyframes(cp1x, cp1y, cp2x, cp2y) {
 
 
 
+
+
+// Runs AE's own Edit > Split Layer (Ctrl+Shift+D) on the selected layers.
+// With removeLeft, the piece before the playhead is then deleted (used by "Remove Left",
+// because setting inPoint from script is unreliable in the user's AE).
+// Returns a result string, or "" if the command did not take effect so the caller can fall back.
+function _leoNativeSplitLayer(comp, layers, t, halfFrame, removeLeft) {
+    var targets = [];
+    var locked = 0;
+    for (var i = 0; i < layers.length; i++) {
+        if (layers[i].locked) { locked++; continue; }
+        if (t > layers[i].inPoint + halfFrame && t < layers[i].outPoint - halfFrame) targets.push(layers[i]);
+    }
+    if (targets.length === 0) {
+        if (locked > 0) return "Error: The selected layers are locked.";
+        return "Error: Move the playhead inside the selected layer first.";
+    }
+
+    var cmdId = 0;
+    try { cmdId = app.findMenuCommandId("Split Layer"); } catch (eFind) { cmdId = 0; }
+    if (!cmdId) cmdId = 2158; // Split Layer, for non-English AE where the name lookup fails
+
+    // Tag targets through their comment so both pieces can be found after the split
+    // (the split copies the comment onto the new piece). Original comments are restored below.
+    var tagPrefix = "__leoSplit_";
+    var tagPattern = /^__leoSplit_(\d+)$/;
+    var savedComments = [];
+    var before = comp.numLayers;
+    var added = 0;
+    var removed = 0;
+
+    app.beginUndoGroup(removeLeft ? "Remove Left Of Playhead" : "Split Layer At Playhead");
+    try {
+        for (var j = 0; j < targets.length; j++) {
+            savedComments.push(targets[j].comment);
+            targets[j].comment = tagPrefix + j;
+        }
+
+        try {
+            _activateCompViewer(comp);
+            app.executeCommand(cmdId);
+        } catch (eExec) {}
+        added = comp.numLayers - before;
+
+        var leftParts = [];
+        for (var k = 1; k <= comp.numLayers; k++) {
+            var lyr = comp.layer(k);
+            var m = tagPattern.exec(lyr.comment);
+            if (!m) continue;
+            lyr.comment = savedComments[parseInt(m[1], 10)];
+            if (removeLeft && added > 0 && Math.abs(lyr.outPoint - t) < halfFrame && lyr.inPoint < t - halfFrame) {
+                leftParts.push(lyr);
+            }
+        }
+        // Collected top-down, so delete bottom-up: removing a layer never shifts one still to delete.
+        for (var r = leftParts.length - 1; r >= 0; r--) {
+            leftParts[r].remove();
+            removed++;
+        }
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+
+    if (added <= 0) return "";
+    var count = removeLeft ? removed : added;
+    var skipped = layers.length - count;
+    return (removeLeft ? "Removed left part of " : "Split ") + count + " layer" + (count > 1 ? "s" : "") +
+        (skipped > 0 ? " (" + skipped + " skipped)" : "") + ".";
+}
+
+// Quick Shortcuts tab: edits the selected layers at the current playhead.
+// action: "moveToCompStart" | "moveToPlayhead" | "split" | "trimLeft" | "trimRight"
+function leoQuickEdit(action) {
+    var undoNames = {
+        moveToCompStart: "Move Layer To Comp Start",
+        moveToPlayhead: "Move Layer To Playhead",
+        split: "Split Layer At Playhead",
+        trimLeft: "Remove Left Of Playhead",
+        trimRight: "Remove Right Of Playhead"
+    };
+    if (!undoNames.hasOwnProperty(action)) return "Error: Unknown shortcut " + action;
+
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+
+    var sel = _getSelectedLayers(comp);
+    if (!sel || sel.length === 0) return "Error: Select at least one layer.";
+
+    var layers = [];
+    for (var i = 0; i < sel.length; i++) layers.push(sel[i]);
+    // Bottom-most first, so a split (duplicate) never shifts the index of a layer still to process.
+    layers.sort(function (a, b) { return b.index - a.index; });
+
+    var t = comp.time;
+    var halfFrame = comp.frameDuration / 2;
+
+    if (action === "split" || action === "trimLeft") {
+        var nativeSplit = _leoNativeSplitLayer(comp, layers, t, halfFrame, action === "trimLeft");
+        if (nativeSplit) return nativeSplit;
+        // Native command did not run (e.g. AE ignored it while the panel had focus): fall back below.
+    }
+
+    var done = 0;
+    var locked = 0;
+    var outside = 0;
+    var splitParts = [];
+
+    app.beginUndoGroup(undoNames[action]);
+    try {
+        for (var j = 0; j < layers.length; j++) {
+            var layer = layers[j];
+            if (layer.locked) { locked++; continue; }
+
+            if (action === "moveToCompStart") {
+                layer.startTime -= layer.inPoint;
+                done++;
+                continue;
+            }
+
+            if (action === "moveToPlayhead") {
+                layer.startTime += t - layer.inPoint;
+                done++;
+                continue;
+            }
+
+            if (t <= layer.inPoint + halfFrame || t >= layer.outPoint - halfFrame) {
+                outside++;
+                continue;
+            }
+
+            if (action === "split") {
+                // duplicate() inserts the copy at this index and pushes the original down,
+                // and the old `layer` reference can end up pointing at the copy. Re-fetch
+                // both pieces by index so each trim hits the right layer.
+                var splitIndex = layer.index;
+                layer.duplicate();
+                var rightPart = comp.layer(splitIndex);
+                var leftPart = comp.layer(splitIndex + 1);
+                leftPart.outPoint = t;
+                rightPart.inPoint = t;
+                if (Math.abs(leftPart.outPoint - t) > halfFrame || Math.abs(rightPart.inPoint - t) > halfFrame) {
+                    return "Error: Split did not apply cleanly to " + leftPart.name + ". Press Ctrl+Z and try again.";
+                }
+                splitParts.push(rightPart);
+            } else if (action === "trimLeft") {
+                layer.inPoint = t;
+            } else {
+                layer.outPoint = t;
+            }
+            done++;
+        }
+
+        if (splitParts.length > 0) {
+            _deselectAll(comp);
+            for (var k = 0; k < splitParts.length; k++) splitParts[k].selected = true;
+        }
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+
+    var notes = [];
+    if (outside > 0) notes.push(outside + " skipped, playhead not inside the layer");
+    if (locked > 0) notes.push(locked + " locked");
+    var suffix = notes.length ? " (" + notes.join(", ") + ")" : "";
+
+    if (done === 0) {
+        if (outside > 0 && locked === 0) return "Error: Move the playhead inside the selected layer first.";
+        return "Error: No layers changed" + suffix + ".";
+    }
+
+    var verbs = {
+        moveToCompStart: "Moved to comp start: ",
+        moveToPlayhead: "Moved ",
+        split: "Split ",
+        trimLeft: "Removed left part of ",
+        trimRight: "Removed right part of "
+    };
+    return verbs[action] + done + " layer" + (done > 1 ? "s" : "") + suffix + ".";
+}
