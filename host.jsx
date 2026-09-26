@@ -6363,3 +6363,161 @@ function leoImportEnhancedAudio(wavPath, muteOriginal, sourceCsv) {
     }
     return "Added enhanced audio to " + comp.name + (muted ? " and muted " + muted + " original audio layer" + (muted === 1 ? "" : "s") : "") + ".";
 }
+
+
+// ---- Captions: fade each word on as it is spoken ----
+// Adds a text animator "LEO Word Fade" (Opacity 0%, Range Selector counting words by index) and keys its
+// Start so word k fades in over `fade` seconds at the moment it is spoken. Re-running replaces it.
+function _leoFindChild(group, matchNames, displayNames) {
+    for (var i = 1; i <= group.numProperties; i++) {
+        var p = group.property(i);
+        for (var m = 0; m < matchNames.length; m++) if (p.matchName === matchNames[m]) return p;
+        for (var d = 0; d < displayNames.length; d++) if (p.name === displayNames[d]) return p;
+    }
+    return null;
+}
+
+function _leoCountWords(text) {
+    var parts = String(text || "").split(/[\s\u0003]+/);
+    var n = 0;
+    for (var i = 0; i < parts.length; i++) if (parts[i] !== "") n++;
+    return n;
+}
+
+function _leoRemoveWordFade(layer) {
+    function animators() { return layer.property("ADBE Text Properties").property("ADBE Text Animators"); }
+    for (var r = animators().numProperties; r >= 1; r--) {
+        if (animators().property(r).name === "LEO Word Fade") animators().property(r).remove();
+    }
+}
+
+// mode: "fade" (opacity) or "fadeup" (opacity + words rise into place).
+function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
+    var textDoc = layer.property("ADBE Text Properties").property("ADBE Text Document").value;
+    var count = _leoCountWords(textDoc.text);
+    if (count < 1 || !wordTimes || !wordTimes.length) return false;
+
+    // One start time per word as AE counts them; spread evenly if the counts differ (edited captions).
+    var times = [];
+    if (wordTimes.length === count) {
+        for (var w = 0; w < count; w++) times.push(Number(wordTimes[w]));
+    } else {
+        var t0 = Number(wordTimes[0]);
+        var t1 = Number(wordTimes[wordTimes.length - 1]);
+        for (var s = 0; s < count; s++) times.push(count > 1 ? t0 + (t1 - t0) * s / (count - 1) : t0);
+    }
+
+    // Adding or removing properties invalidates earlier references, so always re-fetch.
+    function animators() { return layer.property("ADBE Text Properties").property("ADBE Text Animators"); }
+
+    // Replace an earlier LEO Word Fade (Rebuild).
+    for (var r = animators().numProperties; r >= 1; r--) {
+        if (animators().property(r).name === "LEO Word Fade") animators().property(r).remove();
+    }
+
+    animators().addProperty("ADBE Text Animator");
+    var animIndex = animators().numProperties;
+    function anim() { return animators().property(animIndex); }
+    anim().name = "LEO Word Fade";
+    anim().property("ADBE Text Animator Properties").addProperty("ADBE Text Opacity");
+    anim().property("ADBE Text Animator Properties").property("ADBE Text Opacity").setValue(0);
+    if (mode === "fadeup") {
+        // Unspoken words sit a little lower and rise into place as they fade in.
+        var rise = 20;
+        try { rise = Math.max(10, Math.round(Number(textDoc.fontSize) * 0.35)); } catch (eSize) {}
+        anim().property("ADBE Text Animator Properties").addProperty("ADBE Text Position 3D");
+        anim().property("ADBE Text Animator Properties").property("ADBE Text Position 3D").setValue([0, rise, 0]);
+    }
+    anim().property("ADBE Text Selectors").addProperty("ADBE Text Selector");
+    function sel() { return anim().property("ADBE Text Selectors").property(1); }
+
+    var adv = sel().property("ADBE Text Range Advanced");
+    adv.property("ADBE Text Range Units").setValue(2); // 1 = Percentage, 2 = Index
+    var basedOn = _leoFindChild(sel().property("ADBE Text Range Advanced"), ["ADBE Text Range Type2", "ADBE Text Range Type"], ["Based On"]);
+    if (!basedOn) throw new Error("Could not find the Range Selector 'Based On' setting.");
+    basedOn.setValue(3); // 1 Characters, 2 Characters Excluding Spaces, 3 Words, 4 Lines
+
+    sel().property("ADBE Text Index End").setValue(count);
+    var start = sel().property("ADBE Text Index Start");
+    // Start = number of words already revealed: k -> k + 1 over the fade while word k is spoken.
+    var last = -1;
+    for (var k = 0; k < count; k++) {
+        var tk = Math.max(times[k], last + frame / 4);
+        var f = fade;
+        if (k + 1 < count) f = Math.max(frame, Math.min(fade, times[k + 1] - tk));
+        start.setValueAtTime(tk, k);
+        start.setValueAtTime(tk + f, k + 1);
+        last = tk + f;
+    }
+    return true;
+}
+
+// items: [{ text, words: [start times in comp seconds] }] in caption order (from the panel).
+// mode: "fade" (default), "fadeup", or "none" (Regular: removes an earlier LEO Word Fade).
+function leoApplyWordFade(groupTag, items, fadeSec, mode) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var tag = String(groupTag || "");
+    if (!tag || !items || !items.length) return "Error: Nothing to animate.";
+    var fade = Math.max(0.02, Number(fadeSec) || 0.15);
+
+    // Match caption layers of this apply group to items by text (like exact timing), then by order.
+    var layers = [];
+    for (var i = 1; i <= comp.numLayers; i++) {
+        try {
+            var l = comp.layer(i);
+            if (!_leoCommentHasGroupTag(l.comment, tag)) continue;
+            var txt = "";
+            try { txt = l.property("Source Text").value.text; } catch (eTxt) {}
+            layers.push({ layer: l, norm: _leoNormCaptionText(txt), used: false });
+        } catch (e) {}
+    }
+    if (!layers.length) return "Error: Caption layers not found.";
+    var pairs = [];
+    for (var a = 0; a < items.length; a++) {
+        var want = _leoNormCaptionText(items[a].text);
+        var t0 = items[a].words && items[a].words.length ? Number(items[a].words[0]) : 0;
+        var best = null;
+        for (var b = 0; b < layers.length; b++) {
+            var L = layers[b];
+            if (L.used || !want || L.norm !== want) continue;
+            if (!best || Math.abs(L.layer.inPoint - t0) < Math.abs(best.layer.inPoint - t0)) best = L;
+        }
+        if (best) { best.used = true; pairs.push({ entry: best, item: items[a] }); }
+        else pairs.push({ entry: null, item: items[a] });
+    }
+    var spare = [];
+    for (var s = 0; s < layers.length; s++) if (!layers[s].used) spare.push(layers[s]);
+    spare.sort(function (x, y) { return x.layer.inPoint - y.layer.inPoint; });
+    for (var q = 0, sp = 0; q < pairs.length && sp < spare.length; q++) {
+        if (!pairs[q].entry) { pairs[q].entry = spare[sp++]; pairs[q].entry.used = true; }
+    }
+
+    var done = 0;
+    var failed = "";
+    app.beginUndoGroup("Word Fade On");
+    try {
+        for (var k = 0; k < pairs.length; k++) {
+            if (!pairs[k].entry) continue;
+            var lyr = pairs[k].entry.layer;
+            var wasLocked = lyr.locked;
+            if (wasLocked) lyr.locked = false;
+            try {
+                if (mode === "none") {
+                    _leoRemoveWordFade(lyr);
+                    done++;
+                } else if (_leoAddWordFadeToLayer(lyr, pairs[k].item.words, fade, comp.frameDuration, mode === "fadeup" ? "fadeup" : "fade")) {
+                    done++;
+                }
+            } catch (eLayer) {
+                failed = eLayer.toString();
+            }
+            if (wasLocked) lyr.locked = true;
+        }
+    } finally {
+        app.endUndoGroup();
+    }
+    if (!done && failed) return "Error: " + failed;
+    if (mode === "none") return "Regular captions (no word animation).";
+    return (mode === "fadeup" ? "Fade up" : "Fade in") + " words added to " + done + " caption" + (done === 1 ? "" : "s") + ".";
+}

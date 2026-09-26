@@ -70842,6 +70842,40 @@ var kK = Object[_0x332234(0xf4f)],
               }
             }
           } catch (_leoOverlapErr) {}
+          try {
+            const _leoCaps2 = window.LeoOfflineCaptions;
+            if (_leoCaps2 && _leoCaps2.getStatus().animation && _0x5639e8 && Array.isArray(_0x5639e8.words)) {
+              const _leoOff = Number.isFinite(_0x3e7c64) ? _0x3e7c64 : 0;
+              const _leoWordStarts = _0x5639e8.words.map((w) => Number(w.start) + _leoOff);
+              const _leoItems = _leoPlan.map((c, i) => {
+                const from = Number(typeof c.speechStart === "number" ? c.speechStart : c.showAt) - 0.06;
+                const next = _leoPlan[i + 1];
+                const to = next
+                  ? Number(typeof next.speechStart === "number" ? next.speechStart : next.showAt) - 0.06
+                  : Number(c.hideAt) + 0.3;
+                let starts = _leoWordStarts.filter((t) => t >= from && t < to);
+                if (!starts.length) starts = [from + 0.06, Number(c.hideAt)];
+                return { text: String(c.text || ""), words: starts };
+              });
+              const _leoFadeRes = String(
+                (await _0x5710e8(
+                  "leoApplyWordFade(" +
+                    JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) +
+                    "," +
+                    JSON.stringify(_leoItems) +
+                    ",0.15," +
+                    JSON.stringify(_leoCaps2.getStatus().animation) +
+                    ")",
+                )) || "",
+              );
+              if (/^(error|evalscript error)/i.test(_leoFadeRes.trim()))
+                _0x43c87d["error"]("Word fade failed", {
+                  description: /^EvalScript error/i.test(_leoFadeRes)
+                    ? "Restart After Effects to load the word fade feature."
+                    : _leoFadeRes,
+                });
+            }
+          } catch (_leoFadeErr) {}
           const _0x4696e2 = {
             renderPlanLength: _0x5b8448[_0xdc8fe0(0xe62)],
             previousAppliedCount: _0x4e96e4,
@@ -81800,7 +81834,16 @@ var kK = Object[_0x332234(0xf4f)],
   function _leoGenerateCaptionsButton({ offline, upload }) {
     const J = _0xf553ed;
     const [busy, setBusy] = _0x4c7c86["useState"](false);
+    const [asking, setAsking] = _0x4c7c86["useState"](false);
+    const [pick, setPick] = _0x4c7c86["useState"]("fade");
     const ready = !!(offline && offline.ready);
+    const capsApi = offline && offline.api;
+    const animations = (offline && offline.status && offline.status.animations) || [];
+    const ask = () => {
+      if (busy) return;
+      setPick((offline && offline.status && offline.status.animation) || "fade");
+      setAsking(true);
+    };
     const onClick = async () => {
       if (busy) return;
       setBusy(true);
@@ -81814,7 +81857,7 @@ var kK = Object[_0x332234(0xf4f)],
       className: "space-y-2",
       children: [
         J["jsxs"](_0x14db90, {
-          onClick,
+          onClick: ask,
           disabled: !ready || busy,
           title: ready
             ? "Transcribe the active composition's audio on this PC and add the captions to the timeline"
@@ -81832,6 +81875,61 @@ var kK = Object[_0x332234(0xf4f)],
           children: ready
             ? "From the active comp's audio · or upload a file below"
             : "Set up offline captions first",
+        }),
+        J["jsx"](_0x3d1fa1, {
+          open: asking,
+          onOpenChange: setAsking,
+          children: J["jsxs"](_0x58b702, {
+            className: "max-w-[420px]",
+            children: [
+              J["jsxs"](_0x597bbd, {
+                children: [
+                  J["jsx"](_0x3d6016, { className: "text-[13px] font-mono", children: "Caption animation" }),
+                  J["jsx"](_0x4e156a, {
+                    className: "text-[11px] font-mono",
+                    children: "How should the words appear? Your choice is remembered and used for Rebuild too.",
+                  }),
+                ],
+              }),
+              J["jsx"]("div", {
+                className: "grid grid-cols-3 gap-2",
+                children: animations.map((a) =>
+                  J["jsxs"](
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => setPick(a.id),
+                      className:
+                        a.id === pick
+                          ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+                          : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+                      style: { textAlign: "left", opacity: a.id === pick ? 1 : 0.72, cursor: "pointer" },
+                      children: [
+                        J["jsx"]("div", {
+                          className: "mt-1 text-[11px] font-mono font-semibold text-foreground",
+                          children: (a.id === pick ? "\u25CF " : "") + a.label,
+                        }),
+                        J["jsx"]("div", { className: "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85", children: a.note }),
+                      ],
+                    },
+                    a.id,
+                  ),
+                ),
+              }),
+              J["jsxs"](_0x3ec110, {
+                children: [
+                  J["jsx"](_0x2ba343, { children: "Cancel" }),
+                  J["jsx"](_0x32e3c9, {
+                    onClick: () => {
+                      if (capsApi && capsApi.setAnimation) capsApi.setAnimation(pick);
+                      onClick();
+                    },
+                    children: "Generate Captions",
+                  }),
+                ],
+              }),
+            ],
+          }),
         }),
       ],
     });

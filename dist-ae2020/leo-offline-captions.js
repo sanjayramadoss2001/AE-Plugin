@@ -38,6 +38,19 @@
   var KEY_MODEL = "leo_offline_model";
   var KEY_LANGUAGE = "leo_offline_language";
   var KEY_NO_OVERLAP = "leo_caption_no_overlap";
+  var KEY_WORD_FADE = "leo_caption_word_fade"; // legacy checkbox, migrated to KEY_ANIMATION
+  var KEY_ANIMATION = "leo_caption_animation"; // "none" | "fade" | "fadeup", asked before each Generate
+  var ANIMATIONS = [
+    { id: "none", label: "Regular", note: "Plain captions, no word animation" },
+    { id: "fade", label: "Fade in", note: "Each word fades in as it is spoken" },
+    { id: "fadeup", label: "Fade up", note: "Each word fades in and rises into place" },
+  ];
+
+  function currentAnimation() {
+    var id = readSetting(KEY_ANIMATION, "");
+    if (id === "none" || id === "fade" || id === "fadeup") return id;
+    return readSetting(KEY_WORD_FADE, "1") === "0" ? "none" : "fade";
+  }
   var KEY_CLEAN_VOICE = "leo_caption_clean_voice"; // "1" (default): DeepFilterNet-clean the voice before Whisper // "1" (default): trim captions so only one shows at a time
 
   try {
@@ -180,6 +193,8 @@
       model: model.id,
       language: readSetting(KEY_LANGUAGE, "auto"),
       noOverlap: true, // exact speech timing is always on (minimal UI)
+      animation: currentAnimation(),
+      animations: ANIMATIONS,
       cleanVoice: readSetting(KEY_CLEAN_VOICE, "1") !== "0",
       captionStyle: currentStyleId(),
       aiInstalled: supported && isAiInstalled(),
@@ -218,6 +233,11 @@
 
   function setCleanVoice(on) {
     writeSetting(KEY_CLEAN_VOICE, on ? "1" : "0");
+    notify();
+  }
+
+  function setAnimation(id) {
+    writeSetting(KEY_ANIMATION, id === "none" || id === "fadeup" ? id : "fade");
     notify();
   }
 
@@ -983,6 +1003,7 @@
     setModel: setModel,
     setLanguage: setLanguage,
     setNoOverlap: setNoOverlap,
+    setAnimation: setAnimation,
     setCleanVoice: setCleanVoice,
     setCaptionStyle: setCaptionStyle,
     installAI: installAI,
