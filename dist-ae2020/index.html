@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' data: blob: https: file:; connect-src 'self' https://*.supabase.co https://swtcyrgdcslerpuhxheq.supabase.co https: ws: wss:; img-src 'self' data: blob: https: file:; style-src 'self' 'unsafe-inline' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; font-src 'self' data: https:; media-src 'self' data: blob: https: file:;"
+    >
+    <title>AE Layer Tools</title>
+    <link rel="stylesheet" href="./style.css">
+    <link rel="stylesheet" href="./cep-legacy-compat.css">
+  </head>
+  <body style="margin:0;background:#14131d;">
+    <div id="root">
+      <div id="boot-fallback" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#14131d;color:#f4f1ff;font-family:'Courier New',monospace;font-size:14px;letter-spacing:.04em;text-align:center;padding:24px;">
+        Loading AE Layer Tools...
+      </div>
+    </div>
+    <script type="text/javascript">
+      (function () {
+        try {
+          var useLegacyCepTheme = false;
+          if (window.__adobe_cep__ && typeof window.__adobe_cep__.getHostEnvironment === "function") {
+            var hostEnvRaw = window.__adobe_cep__.getHostEnvironment();
+            var hostEnv = typeof hostEnvRaw === "string" ? JSON.parse(hostEnvRaw) : hostEnvRaw;
+            var appVersion = hostEnv && hostEnv.appVersion ? String(hostEnv.appVersion) : "";
+            var appMajor = parseInt(appVersion.split(".")[0], 10);
+            if (isFinite(appMajor) && appMajor <= 17) {
+              useLegacyCepTheme = true;
+            }
+          } else {
+            var match = /Chrome\/(\d+)/i.exec(navigator.userAgent || "");
+            var chromeMajor = match ? parseInt(match[1], 10) : 999;
+            if (isFinite(chromeMajor) && chromeMajor < 80) {
+              useLegacyCepTheme = true;
+            }
+          }
+          if (useLegacyCepTheme) {
+            document.documentElement.className += (document.documentElement.className ? " " : "") + "cep-legacy";
+          }
+        } catch (e) {}
+        window.__DRIPZ_BOOT_BASE__ = "./";
+        var el = document.getElementById("boot-fallback");
+        if (el) {
+          el.innerHTML = "AE Layer Tools HTML loaded...";
+        }
+      })();
+    </script>
+    <script type="text/javascript" src="./bootstrap.js"></script>
+  </body>
+</html>

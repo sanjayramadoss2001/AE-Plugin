@@ -1,0 +1,194 @@
+html.cep-legacy button,
+html.cep-legacy [role="button"],
+html.cep-legacy input,
+html.cep-legacy select,
+html.cep-legacy textarea {
+  color: #e8ecff;
+}
+
+html.cep-legacy button,
+html.cep-legacy [role="button"] {
+  background-color: #1c2230;
+  border-color: #30384a;
+  background-image: none;
+  box-shadow: none;
+}
+
+html.cep-legacy body {
+  background: #0f131b;
+}
+
+html.cep-legacy .panel-border {
+  border-color: #252c3b !important;
+  background: linear-gradient(180deg, #1d2233 0%, #151a27 100%) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.012) !important;
+}
+
+html.cep-legacy .legacy-toolbar-shell {
+  background: linear-gradient(180deg, #2b3148 0%, #1e2434 100%) !important;
+  border-color: #303950 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015), 0 0 0 1px rgba(88, 140, 255, 0.018) !important;
+}
+
+html.cep-legacy .legacy-toolbar-button {
+  background: linear-gradient(180deg, #353c5b 0%, #293149 100%) !important;
+  border: 1px solid #38435c !important;
+  color: #d8ebff !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02), 0 0 0 1px rgba(120, 165, 255, 0.02), 0 8px 18px rgba(11, 18, 34, 0.14) !important;
+}
+
+html.cep-legacy .legacy-toolbar-chip {
+  background: linear-gradient(180deg, #2a394b 0%, #202b3a 100%) !important;
+  border-color: #333d53 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.012), 0 0 10px rgba(74, 157, 219, 0.06), 0 8px 18px rgba(10, 16, 29, 0.1) !important;
+}
+
+html.cep-legacy .legacy-main-tabs {
+  background: linear-gradient(180deg, #23293a 0%, #191f2c 100%) !important;
+  border-color: #2d3445 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.01), 0 12px 24px rgba(9, 12, 20, 0.16) !important;
+}
+
+html.cep-legacy .legacy-main-tab {
+  background: linear-gradient(180deg, #2d3347 0%, #232a3b 100%) !important;
+  border-color: #343c50 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.008) !important;
+}
+
+html.cep-legacy .legacy-main-tab-icon {
+  background: linear-gradient(180deg, #202737 0%, #171d2a 100%) !important;
+}
+
+html.cep-legacy .legacy-search-shell {
+  background: linear-gradient(180deg, #282f42 0%, #1e2535 100%) !important;
+  border-color: #2d3446 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.01), 0 8px 18px rgba(8, 12, 22, 0.08) !important;
+}
+
+html.cep-legacy .legacy-search-input {
+  background: transparent !important;
+  border: 0 !important;
+}
+
+html.cep-legacy .legacy-preset-list {
+  background: linear-gradient(180deg, #1b2232 0%, #141a26 100%) !important;
+  border-color: #293042 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.01), 0 10px 22px rgba(8, 12, 22, 0.1) !important;
+}
+
+html.cep-legacy .legacy-preset-card {
+  background: linear-gradient(180deg, #2b3247 0%, #212839 100%) !important;
+  border-color: #31394d !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.012), 0 10px 22px rgba(8, 10, 18, 0.12) !important;
+}
+
+html.cep-legacy .legacy-preset-card:hover {
+  background: linear-gradient(180deg, #323a51 0%, #262e41 100%) !important;
+  border-color: #5f9de1 !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018), 0 0 0 1px rgba(95, 157, 225, 0.05), 0 10px 24px rgba(20, 38, 70, 0.12) !important;
+}
+
+html.cep-legacy .legacy-count-stepper {
+  background: linear-gradient(180deg, #43355f 0%, #312844 100%) !important;
+  border-color: #4a546d !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.015), 0 10px 20px rgba(83, 58, 146, 0.12), 0 0 0 1px rgba(163, 126, 255, 0.018) !important;
+}
+
+html.cep-legacy .legacy-count-stepper-btn {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+html.cep-legacy .legacy-count-stepper-input {
+  appearance: none !important;
+  color: #eef3ff !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: textfield !important;
+}
+
+html.cep-legacy .legacy-count-stepper-input::-ms-clear,
+html.cep-legacy .legacy-count-stepper-input::-ms-reveal,
+html.cep-legacy .legacy-count-stepper-input::-webkit-outer-spin-button,
+html.cep-legacy .legacy-count-stepper-input::-webkit-inner-spin-button {
+  display: none !important;
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+html.cep-legacy .glow-btn {
+  color: #f6f8ff !important;
+}
+
+html.cep-legacy .glow-btn-lavender {
+  background: #8057ee !important;
+  border-color: #a48cff !important;
+}
+
+html.cep-legacy .glow-btn-red {
+  background: #d34949 !important;
+  border-color: #ef7272 !important;
+}
+
+html.cep-legacy .glow-btn-gold {
+  background: #cf9a27 !important;
+  border-color: #ebc55c !important;
+}
+
+html.cep-legacy input:not(.legacy-count-stepper-input),
+html.cep-legacy select,
+html.cep-legacy textarea {
+  background: #202635 !important;
+  border-color: #343d51 !important;
+}
+
+html.cep-legacy .pretty-scrollbar,
+html.cep-legacy .pretty-scrollbar > div,
+html.cep-legacy .pretty-scrollbar button {
+  background-color: #171d29 !important;
+}
+
+html.cep-legacy button[class*="text-muted-foreground"],
+html.cep-legacy [role="button"][class*="text-muted-foreground"] {
+  color: #c6d0e6 !important;
+}
+
+html.cep-legacy .group button,
+html.cep-legacy .group [role="button"] {
+  background-color: #1c2230;
+}
+
+html.cep-legacy button svg,
+html.cep-legacy [role="button"] svg,
+html.cep-legacy .lucide {
+  color: inherit;
+  stroke: currentColor;
+}
+
+html.cep-legacy [data-state="active"],
+html.cep-legacy [aria-pressed="true"],
+html.cep-legacy [aria-selected="true"] {
+  background: linear-gradient(180deg, #304760 0%, #24384d 100%) !important;
+  border-color: #4a6f98 !important;
+  color: #f7fbff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.018), 0 8px 18px rgba(44, 73, 108, 0.12) !important;
+}
+
+html.cep-legacy .text-white,
+html.cep-legacy .text-primary-foreground,
+html.cep-legacy .text-foreground {
+  color: #edf2ff !important;
+}
+
+html.cep-legacy .text-muted-foreground,
+html.cep-legacy .text-muted-foreground\/40,
+html.cep-legacy .text-muted-foreground\/50,
+html.cep-legacy .text-muted-foreground\/60,
+html.cep-legacy .text-muted-foreground\/70,
+html.cep-legacy .text-muted-foreground\/80 {
+  color: #aab5cc !important;
+}
