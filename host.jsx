@@ -5994,3 +5994,277 @@ function leoQuickEdit(action) {
     };
     return verbs[action] + done + " layer" + (done > 1 ? "s" : "") + suffix + ".";
 }
+
+
+// ---- Generate Captions: export the active comp's audio to a temp WAV for offline transcription ----
+
+function _leoCompHasAudio(comp) {
+    for (var i = 1; i <= comp.numLayers; i++) {
+        try {
+            var l = comp.layer(i);
+            if ((l instanceof AVLayer) && l.hasAudio && l.audioEnabled) return true;
+        } catch (e) {}
+    }
+    return false;
+}
+
+// Point an output module at an audio-only WAV. Returns true when the format is confirmed as WAV.
+function _leoSetWavOutput(om) {
+    try { om.setSettings({ "Format": "WAV" }); } catch (eFormat) {}
+    try { om.setSettings({ "Output Audio": "On" }); } catch (eAudio) {}
+    try { om.setSettings({ "Audio Sample Rate": 16000 }); } catch (eRate) {}
+    try { om.setSettings({ "Audio Channels": "Mono" }); } catch (eCh) {}
+    try { om.setSettings({ "Audio Bit Depth": "16 Bit" }); } catch (eBits) {}
+
+    var format = "";
+    try { format = String(om.getSettings(GetSettingsFormat.STRING)["Format"] || ""); } catch (eRead) {}
+    if (/wav/i.test(format)) return true;
+
+    // Fallback: an output module template with WAV in its name.
+    try {
+        var templates = om.templates;
+        for (var i = 0; i < templates.length; i++) {
+            if (/wav/i.test(templates[i])) {
+                om.applyTemplate(templates[i]);
+                return true;
+            }
+        }
+    } catch (eTpl) {}
+    return false;
+}
+
+// Renders the whole active comp's audio (comp time 0 -> end) to %TEMP%\LEO Comp Audio - <comp>.wav.
+// Returns JSON { path, name, duration } or "Error: ...".
+function leoRenderCompAudio() {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the composition you want captions for first.";
+    if (!_leoCompHasAudio(comp)) return "Error: This composition has no audible layers. Turn on audio for your video or add an audio layer.";
+
+    var rq = app.project.renderQueue;
+    try {
+        if (rq.rendering) return "Error: The Render Queue is busy. Wait for it to finish and try again.";
+    } catch (eBusy) {}
+
+    var safeName = String(comp.name).replace(/[\\\/:*?"<>|]/g, "_");
+    // Unique per run: the panel keys a caption batch (group id, applied count) by file name,
+    // so reusing one name made a new Generate continue the previous batch.
+    var now = new Date();
+    var stamp = ("0" + now.getHours()).slice(-2) + ("0" + now.getMinutes()).slice(-2) + ("0" + now.getSeconds()).slice(-2);
+    var outFile = new File(Folder.temp.fsName + "/LEO Comp Audio - " + safeName + " " + stamp + ".wav");
+    try { if (outFile.exists) outFile.remove(); } catch (eOld) {}
+
+    // Only our item may render: pause anything else that is queued, restore afterwards.
+    var paused = [];
+    for (var i = 1; i <= rq.numItems; i++) {
+        try {
+            var it = rq.item(i);
+            if (it.status === RQItemStatus.QUEUED) { it.render = false; paused.push(it); }
+        } catch (ePause) {}
+    }
+
+    var item = null;
+    var error = "";
+    app.beginSuppressDialogs();
+    try {
+        item = rq.items.add(comp);
+        item.timeSpanStart = 0;
+        item.timeSpanDuration = comp.duration;
+        var om = item.outputModule(1);
+        if (!_leoSetWavOutput(om)) {
+            error = "Error: Could not set a WAV audio output in the Render Queue.";
+        } else {
+            om.file = outFile;
+            rq.render();
+        }
+    } catch (e) {
+        error = "Error: Audio export failed: " + e.toString();
+    } finally {
+        try { if (item) item.remove(); } catch (eRemove) {}
+        for (var k = 0; k < paused.length; k++) {
+            try { paused[k].render = true; } catch (eRestore) {}
+        }
+        app.endSuppressDialogs(false);
+    }
+    if (error) return error;
+
+    // AE may adjust the extension; accept whatever WAV it wrote next to our path.
+    if (!outFile.exists) {
+        var alt = new File(outFile.fsName.replace(/\.wav$/i, "") + ".wav");
+        if (alt.exists) outFile = alt;
+    }
+    if (!outFile.exists) return "Error: After Effects did not write the audio file.";
+
+    return "{"
+        + "\"path\":\"" + _escapeJSONValue(outFile.fsName) + "\","
+        + "\"name\":\"" + _escapeJSONValue(File.decode(outFile.name)) + "\","
+        + "\"duration\":" + _aeSafeFloat(comp.duration, 0)
+        + "}";
+}
+
+
+// Caption layers carry "<groupTag>\n<signature>" in their comment. AE may store that line break
+// as \r, so accept any line-break style (and the tag anywhere in the comment as a fallback).
+function _leoCommentHasGroupTag(comment, tag) {
+    var c = String(comment || "");
+    if (!tag || !c) return false;
+    if (c.split(/[\r\n]+/)[0] === tag) return true;
+    var at = c.indexOf(tag);
+    if (at === -1) return false;
+    var after = c.charAt(at + tag.length);
+    return after === "" || after === "\r" || after === "\n";
+}
+
+// ---- Captions: never show two captions at once ----
+// Trims each caption layer of one apply group (comment starts with groupTag) so it ends exactly
+// where the next caption begins. Only outPoint is changed (setting inPoint is unreliable here).
+function leoResolveCaptionOverlaps(groupTag) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var tag = String(groupTag || "");
+    if (!tag) return "Error: Missing caption group.";
+
+    var layers = [];
+    for (var i = 1; i <= comp.numLayers; i++) {
+        try {
+            var l = comp.layer(i);
+            if (_leoCommentHasGroupTag(l.comment, tag)) layers.push(l);
+        } catch (e) {}
+    }
+    if (layers.length < 2) return "No overlaps.";
+    layers.sort(function (a, b) { return a.inPoint - b.inPoint; });
+
+    var frame = comp.frameDuration;
+    var fixed = 0;
+    app.beginUndoGroup("Remove Caption Overlaps");
+    try {
+        for (var j = 0; j < layers.length - 1; j++) {
+            var cur = layers[j];
+            var nextIn = layers[j + 1].inPoint;
+            if (cur.outPoint <= nextIn + frame / 2) continue;
+            // Never shrink a caption to a sliver (e.g. a duplicate starting at the same time).
+            if (nextIn - cur.inPoint < frame * 2) continue;
+            var newOut = Math.max(cur.inPoint + frame, nextIn);
+            var wasLocked = cur.locked;
+            if (wasLocked) cur.locked = false;
+            cur.outPoint = newOut;
+            if (wasLocked) cur.locked = true;
+            fixed++;
+        }
+    } catch (err) {
+        return "Error: " + err.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return fixed ? ("Trimmed " + fixed + " overlapping caption" + (fixed > 1 ? "s" : "") + ".") : "No overlaps.";
+}
+
+
+// ---- Captions: exact speech timing ----
+// captions: [{ text, start, end }] in comp seconds, in caption order (from the panel's plan).
+// Each caption layer of the group is moved (startTime, never inPoint) so it starts on its first
+// word, and trimmed (outPoint) to end on its last word, never past the next caption's start.
+function _leoNormCaptionText(s) {
+    return String(s || "").toLowerCase().replace(/[\s.,!?;:"'`\-…()\[\]{}]+/g, "");
+}
+
+function leoApplyExactCaptionTiming(groupTag, captions) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var tag = String(groupTag || "");
+    if (!tag || !captions || !captions.length) return "Error: Nothing to time.";
+
+    var layers = [];
+    for (var i = 1; i <= comp.numLayers; i++) {
+        try {
+            var l = comp.layer(i);
+            if (!_leoCommentHasGroupTag(l.comment, tag)) continue;
+            var txt = "";
+            try { txt = l.property("Source Text").value.text; } catch (eTxt) {}
+            layers.push({ layer: l, norm: _leoNormCaptionText(txt), used: false });
+        } catch (e) {}
+    }
+    if (!layers.length) return "Error: Caption layers not found.";
+
+    var fd = comp.frameDuration;
+    function snap(t) { return Math.round(t / fd) * fd; }
+
+    // Target times: start on the first word, end on the last word (at least ~0.25s so single short
+    // words stay readable), but never past the next caption's start.
+    var targets = [];
+    for (var c = 0; c < captions.length; c++) {
+        var st = snap(Math.max(0, Number(captions[c].start) || 0));
+        var en = snap(Number(captions[c].end) || 0);
+        if (!(en > st)) en = st + fd;
+        en = Math.max(en, st + snap(0.25));
+        targets.push({ norm: _leoNormCaptionText(captions[c].text), start: st, end: en, entry: null });
+    }
+    for (var n = 0; n < targets.length - 1; n++) {
+        if (targets[n].end > targets[n + 1].start) targets[n].end = Math.max(targets[n].start + fd, targets[n + 1].start);
+    }
+
+    // Match captions to layers by text (closest current start wins), then pair leftovers by order.
+    for (var a = 0; a < targets.length; a++) {
+        var best = null;
+        for (var b = 0; b < layers.length; b++) {
+            var L = layers[b];
+            if (L.used || !targets[a].norm || L.norm !== targets[a].norm) continue;
+            if (!best || Math.abs(L.layer.inPoint - targets[a].start) < Math.abs(best.layer.inPoint - targets[a].start)) best = L;
+        }
+        if (best) { best.used = true; targets[a].entry = best; }
+    }
+    var spare = [];
+    for (var s = 0; s < layers.length; s++) if (!layers[s].used) spare.push(layers[s]);
+    spare.sort(function (x, y) { return x.layer.inPoint - y.layer.inPoint || y.layer.index - x.layer.index; });
+    for (var q = 0, sp = 0; q < targets.length && sp < spare.length; q++) {
+        if (!targets[q].entry) { targets[q].entry = spare[sp++]; targets[q].entry.used = true; }
+    }
+
+    var timed = 0;
+    app.beginUndoGroup("Exact Caption Timing");
+    try {
+        for (var k = 0; k < targets.length; k++) {
+            var tgt = targets[k];
+            if (!tgt.entry) continue;
+            var lyr = tgt.entry.layer;
+            var wasLocked = lyr.locked;
+            if (wasLocked) lyr.locked = false;
+            var shift = tgt.start - lyr.inPoint;
+            if (Math.abs(shift) > fd / 10) lyr.startTime += shift; // moves the whole layer + keyframes
+            lyr.outPoint = tgt.end;
+            if (wasLocked) lyr.locked = true;
+            timed++;
+        }
+    } catch (err) {
+        return "Error: " + err.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return "Timed " + timed + " caption" + (timed === 1 ? "" : "s") + " to the speech.";
+}
+
+
+// ---- Generate Captions: replace the previous run ----
+// Removes text layers created by earlier "Generate Captions" runs in the active comp. Those carry a
+// group tag built from the generated audio name ("DRIPZ_CAPTION_GROUP::leo-comp-audio-...").
+// Captions from uploaded files and all other layers are left alone.
+function leoRemoveGeneratedCaptions() {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var removed = 0;
+    app.beginUndoGroup("Remove Previous Generated Captions");
+    try {
+        for (var i = comp.numLayers; i >= 1; i--) {
+            var l = comp.layer(i);
+            if (!(l instanceof TextLayer)) continue;
+            if (String(l.comment || "").indexOf("DRIPZ_CAPTION_GROUP::leo-comp-audio-") === -1) continue;
+            if (l.locked) l.locked = false;
+            l.remove();
+            removed++;
+        }
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return "Removed " + removed + " previous caption layer" + (removed === 1 ? "" : "s") + ".";
+}
