@@ -6391,7 +6391,7 @@ function _leoRemoveWordFade(layer) {
     }
 }
 
-// mode: "fade" (opacity) or "fadeup" (opacity + words rise into place).
+// mode: "fade" = Fade Up Words (opacity only, like AE's preset), "fadeup" = Rise Up Words (+ slide up).
 function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
     var textDoc = layer.property("ADBE Text Properties").property("ADBE Text Document").value;
     var count = _leoCountWords(textDoc.text);
@@ -6436,6 +6436,10 @@ function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
     var basedOn = _leoFindChild(sel().property("ADBE Text Range Advanced"), ["ADBE Text Range Type2", "ADBE Text Range Type"], ["Based On"]);
     if (!basedOn) throw new Error("Could not find the Range Selector 'Based On' setting.");
     basedOn.setValue(3); // 1 Characters, 2 Characters Excluding Spaces, 3 Words, 4 Lines
+    // Same selector settings as After Effects' "Fade Up Words" preset: Square shape, 100% smoothness
+    // (each word ramps in softly instead of popping).
+    try { sel().property("ADBE Text Range Advanced").property("ADBE Text Range Shape").setValue(1); } catch (eShape) {}
+    try { sel().property("ADBE Text Range Advanced").property("ADBE Text Selector Smoothness").setValue(100); } catch (eSmooth) {}
 
     sel().property("ADBE Text Index End").setValue(count);
     var start = sel().property("ADBE Text Index Start");
@@ -6519,5 +6523,156 @@ function leoApplyWordFade(groupTag, items, fadeSec, mode) {
     }
     if (!done && failed) return "Error: " + failed;
     if (mode === "none") return "Regular captions (no word animation).";
-    return (mode === "fadeup" ? "Fade up" : "Fade in") + " words added to " + done + " caption" + (done === 1 ? "" : "s") + ".";
+    return (mode === "fadeup" ? "Rise Up Words" : "Fade Up Words") + " added to " + done + " caption" + (done === 1 ? "" : "s") + ".";
+}
+
+
+// ---- Presets tab: After Effects text presets (.ffx) ----
+// Built-in presets live in <AE>\Support Files\Presets\Text\<category>\*.ffx; the user's own presets
+// folder (User Presets setting) is listed as "My presets".
+function _leoBuiltInTextPresetsRoot() {
+    var candidates = [];
+    try { candidates.push(Folder.appPackage.fsName + "/Presets/Text"); } catch (e1) {}
+    try { candidates.push(Folder.startup.fsName + "/Presets/Text"); } catch (e2) {}
+    try { candidates.push(Folder.appPackage.fsName + "/Support Files/Presets/Text"); } catch (e3) {}
+    for (var i = 0; i < candidates.length; i++) {
+        var f = new Folder(candidates[i]);
+        if (f.exists) return f;
+    }
+    return null;
+}
+
+// Returns JSON [{ n: name, p: path, g: category }].
+function leoListTextPresets() {
+    var items = [];
+    var root = _leoBuiltInTextPresetsRoot();
+    if (root) {
+        var bucket = [];
+        _scanPresetsRecursive(root, bucket, root.fsName);
+        for (var i = 0; i < bucket.length; i++) items.push({ n: bucket[i].name, p: bucket[i].path, g: bucket[i].group });
+    }
+    try {
+        var mine = _getAllUserPresets();
+        for (var j = 0; j < mine.length; j++) items.push({ n: mine[j].name, p: mine[j].path, g: "My presets" });
+    } catch (eUser) {}
+    var out = [];
+    for (var k = 0; k < items.length; k++) {
+        out.push("{\"n\":\"" + _escapeJSONValue(items[k].n) + "\",\"p\":\"" + _escapeJSONValue(items[k].p)
+            + "\",\"g\":\"" + _escapeJSONValue(items[k].g) + "\"}");
+    }
+    return "[" + out.join(",") + "]";
+}
+
+// Applies a preset to the selected layers at each layer's start; keeps the selection and playhead.
+function leoApplyPresetToSelected(presetPath) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var file = new File(presetPath);
+    if (!file.exists) return "Error: Preset file not found.";
+    var sel = _getSelectedLayers(comp);
+    if (!sel || !sel.length) return "Error: Select one or more text layers first.";
+    var layers = [];
+    for (var i = 0; i < sel.length; i++) layers.push(sel[i]);
+    var savedTime = comp.time;
+    var applied = 0;
+    app.beginUndoGroup("Apply Text Preset");
+    try {
+        for (var j = 0; j < layers.length; j++) applied += _applyPresetPathsToLayer(comp, layers[j], [file.fsName]);
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        try { comp.time = savedTime; } catch (eTime) {}
+        for (var k = 0; k < layers.length; k++) { try { layers[k].selected = true; } catch (eSel) {} }
+        app.endUndoGroup();
+    }
+    return "Applied \"" + File.decode(file.name).replace(/\.ffx$/i, "") + "\" to " + applied + " layer" + (applied === 1 ? "" : "s") + ".";
+}
+
+// Applies the caption text preset to every caption layer of an apply group, once per layer
+// (a "LEO_PRESET::" line in the comment marks styled layers, so Rebuild doesn't stack presets).
+function leoApplyPresetToCaptionGroup(groupTag, presetPath) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var file = new File(presetPath);
+    if (!file.exists) return "Error: Caption text preset not found: " + presetPath;
+    var tag = String(groupTag || "");
+    var targets = [];
+    for (var i = 1; i <= comp.numLayers; i++) {
+        try {
+            var l = comp.layer(i);
+            if (_leoCommentHasGroupTag(l.comment, tag)) targets.push(l);
+        } catch (e) {}
+    }
+    if (!targets.length) return "Error: Caption layers not found.";
+    var name = File.decode(file.name).replace(/\.ffx$/i, "");
+    var savedTime = comp.time;
+    var applied = 0;
+    var skipped = 0;
+    app.beginUndoGroup("Caption Text Preset");
+    try {
+        for (var t = 0; t < targets.length; t++) {
+            var layer = targets[t];
+            var comment = String(layer.comment || "");
+            if (comment.indexOf("LEO_PRESET::") !== -1) { skipped++; continue; }
+            var wasLocked = layer.locked;
+            if (wasLocked) layer.locked = false;
+            if (_applyPresetPathsToLayer(comp, layer, [file.fsName]) > 0) {
+                applied++;
+                try { layer.comment = comment + "\n" + "LEO_PRESET::" + name; } catch (eComment) {}
+            }
+            if (wasLocked) layer.locked = true;
+        }
+    } catch (err) {
+        return "Error: " + err.toString();
+    } finally {
+        try { comp.time = savedTime; } catch (eTime) {}
+        app.endUndoGroup();
+    }
+    return "Text preset \"" + name + "\" applied to " + applied + " caption" + (applied === 1 ? "" : "s") +
+        (skipped ? " (" + skipped + " already styled)" : "") + ".";
+}
+
+
+// ---- Captions: leave the timeline tidy ----
+// Adding animators/keyframes from a script twirls layers open, and AE's scripting API cannot twirl
+// them closed. A duplicate always appears collapsed, so each caption layer of the group is replaced
+// by its own duplicate (same text, animators, keyframes, timing, comment); the original is removed
+// only after checking the copy matches.
+function leoCollapseCaptionGroup(groupTag) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the caption composition first.";
+    var tag = String(groupTag || "");
+    if (!tag) return "Error: Missing caption group.";
+    var collapsed = 0;
+    app.beginUndoGroup("Tidy Caption Layers");
+    try {
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (!_leoCommentHasGroupTag(layer.comment, tag)) continue;
+            var wasLocked = layer.locked;
+            if (wasLocked) layer.locked = false;
+            layer.duplicate(); // the copy is inserted at index i, the original moves to i + 1
+            var copy = comp.layer(i);
+            var original = comp.layer(i + 1);
+            // AE may auto-increment a trailing number in the copy's name, so match on the unique caption
+            // comment and timing, then give the copy the original name.
+            if (copy.index !== original.index && String(copy.comment) === String(original.comment) &&
+                Math.abs(copy.inPoint - original.inPoint) < 1e-6 && Math.abs(copy.outPoint - original.outPoint) < 1e-6) {
+                var originalName = original.name;
+                original.remove();
+                try { copy.name = originalName; } catch (eName) {}
+                if (wasLocked) copy.locked = true;
+                collapsed++;
+            } else {
+                // Unexpected layout: keep the original, drop whatever was just added.
+                copy.remove();
+                if (wasLocked) layer.locked = true;
+            }
+        }
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return "Tidied " + collapsed + " caption layer" + (collapsed === 1 ? "" : "s") + ".";
 }
