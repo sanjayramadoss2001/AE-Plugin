@@ -68766,7 +68766,7 @@ var kK = Object[_0x332234(0xf4f)],
       [_0x19f440, _0x332549] = _0x4c7c86[_0x509683(0xc88)](() => {
         var _0x49e78d = _0x509683;
         try {
-          return localStorage[_0x49e78d(0xb30)](_0x49fe45) === "1";
+          return false; // LEO: batch mode removed from the minimal Captions tab
         } catch (_0x36f72d) {
           return !0x1;
         }
@@ -70576,11 +70576,11 @@ var kK = Object[_0x332234(0xf4f)],
           settings: Y(L({}, _0xd5c20), {
             fps: _0x42cf7d,
             timingMode:
-              _0x3b1f1f === _0x509683(0xa3d)
+              _leoExactTiming() || _0x3b1f1f === _0x509683(0xa3d)
                 ? _0x509683(0xa8e)
                 : _0x509683(0xd18),
             overlapScale:
-              _0x3b1f1f === _0x509683(0xa3d) ? 0x0 : _0x4f7838 / 0x64,
+              _leoExactTiming() || _0x3b1f1f === _0x509683(0xa3d) ? 0x0 : _0x4f7838 / 0x64,
           }),
         }),
       _0x3a96c9 = (_0x5e96e6) => {
@@ -70682,12 +70682,16 @@ var kK = Object[_0x332234(0xf4f)],
         () => _0x2e432d(_0x2f813f, _0x2f813f[_0x509683(0xe62)], _0x550d51),
         [_0x2f813f, _0x3b1f1f, _0x550d51],
       ),
-      _0x50cc30 = _0x19f440
-        ? _0x50a7ed > 0x0 && !!_0x4f6860 && _0x3ef108 !== _0x4f6860
-        : _0x50a7ed > 0x0 &&
-          _0x50a7ed === _0x50dc88["length"] &&
-          !!_0x4f6860 &&
-          _0x290ba3 !== _0x4f6860;
+      // LEO: once every caption is applied, always offer Rebuild (apply edits / re-time), not a dead
+      // "All Captions Applied" button. Partially applied batches still show "Apply Next".
+      _0x50cc30 =
+        (_0x50a7ed > 0x0 && _0x50a7ed >= _0x50dc88["length"]) ||
+        (_0x19f440
+          ? _0x50a7ed > 0x0 && !!_0x4f6860 && _0x3ef108 !== _0x4f6860
+          : _0x50a7ed > 0x0 &&
+            _0x50a7ed === _0x50dc88["length"] &&
+            !!_0x4f6860 &&
+            _0x290ba3 !== _0x4f6860);
     _0x293d43();
     const _0x4d35d0 =
         _0x18bd66 !== null &&
@@ -70796,8 +70800,9 @@ var kK = Object[_0x332234(0xf4f)],
           _0x2fdf51 = _0x2e432d(_0x30fcc0, _0x2265e9, _0x50f1e5),
           _0x4090d1 = _0x46c04d || _0x3a5831(_0x218fcc || "captions");
         _0x46c04d || _0x46ea50(_0x4090d1);
-        const _0x5a7cc6 = _0x39f488(_0x30fcc0, {
-          presetKeyframeMode: _0x3b1f1f,
+        const _leoPlan = _leoExactTiming() ? _leoSanitizePlan(_0x30fcc0, _0x50f1e5) : _0x30fcc0;
+        const _0x5a7cc6 = _0x39f488(_leoPlan, {
+          presetKeyframeMode: _leoExactTiming() ? "stretch" : _0x3b1f1f,
           presetPathEntries: _0x31fbc3,
           captionGroupId: _0x4090d1,
         });
@@ -70814,12 +70819,10 @@ var kK = Object[_0x332234(0xf4f)],
           try {
             const _leoCaps = window.LeoOfflineCaptions;
             if (!_leoCaps || _leoCaps.getStatus().noOverlap) {
-              const _leoTimes = _0x30fcc0.map((c) => ({
+              const _leoTimes = _leoPlan.map((c) => ({
                 text: String(c.text || ""),
-                start: Number(typeof c.speechStart === "number" ? c.speechStart : c.start),
-                end: Number(
-                  typeof c.speechFullEnd === "number" ? c.speechFullEnd : typeof c.speechEnd === "number" ? c.speechEnd : c.end,
-                ),
+                start: Number(c.showAt),
+                end: Number(c.hideAt),
               }));
               const _leoTimingRes = await _0x5710e8(
                 "leoApplyExactCaptionTiming(" +
@@ -71086,6 +71089,7 @@ var kK = Object[_0x332234(0xf4f)],
               _0xf553ed["jsx"](_leoOfflineSetupBody, { offline: _leoOffline }),
           ],
         }),
+        false && // LEO minimal UI: hide How To Use card
         _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
           className: _0x509683(0xe86),
           children: [
@@ -72511,6 +72515,7 @@ var kK = Object[_0x332234(0xf4f)],
                   "rounded-xl\x20border\x20p-2\x20shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03)]\x20" +
                   _0x36da93,
                 children: [
+                  false && // LEO minimal UI: hide Batch Apply mode/count row
                   _0xf553ed[_0x509683(0x7b7)]("div", {
                     className: _0x509683(0x8f6),
                     children: [
@@ -73635,6 +73640,20 @@ var kK = Object[_0x332234(0xf4f)],
   }
   function _0x5a7d80(_0x58dee8, _0xa9a2db = 0x8) {
     var _0x2c31ca = _0xd83adf;
+    // LEO: smart caption grouping (leo-offline-captions.js segmentLines); original rule below is the fallback.
+    try {
+      const _leoCaps = window.LeoOfflineCaptions;
+      if (_leoCaps && typeof _leoCaps.segmentLines === "function") {
+        const _leoLines = _leoCaps.segmentLines(_0x58dee8);
+        if (_leoLines && _leoLines.length)
+          return _leoLines.map((l) => ({
+            text: _0x2951e5(l.text) || l.text,
+            start: l.start,
+            end: l.end,
+            lastWordStart: l.lastWordStart,
+          }));
+      }
+    } catch (_leoSegErr) {}
     const _0x3fc6ed = [],
       _0x1d52e1 =
         _0x58dee8[_0x2c31ca(0xe62)] > 0x0
@@ -81512,8 +81531,47 @@ var kK = Object[_0x332234(0xf4f)],
       "beats",
       _0xd83adf(0x52d),
       "shortcuts",
+      "audio",
     ],
     _0x5bcfe4 = "dripz-tab-order";
+  // Exact speech timing (Caption Setup toggle, default on): captions follow the words, one at a time.
+  function _leoExactTiming() {
+    try {
+      const c = window.LeoOfflineCaptions;
+      return !c || c.getStatus().noOverlap;
+    } catch (e) {
+      return true;
+    }
+  }
+  // Rewrites a caption render plan so AE creates layers with exact times: show 2 frames before the
+  // first word, hide at the last word's end, bridge gaps < 0.35 s (no flicker), never overlap the next.
+  function _leoSanitizePlan(plan, fps) {
+    const fd = 1 / (Number(fps) > 0 ? Number(fps) : 30);
+    const num = (v, d) => (typeof v === "number" && isFinite(v) ? v : d);
+    const out = plan.map((c) => Object.assign({}, c));
+    out.forEach((c) => {
+      const speechStart = num(c.speechStart, num(c.start, 0));
+      const speechEnd = num(c.speechFullEnd, num(c.speechEnd, num(c.end, speechStart + 0.5)));
+      c.showAt = Math.max(0, speechStart - 2 * fd);
+      c.hideAt = Math.max(speechEnd, c.showAt + 0.25);
+    });
+    for (let i = 1; i < out.length; i++) {
+      if (out[i].showAt < out[i - 1].showAt + fd) out[i].showAt = out[i - 1].showAt + fd;
+    }
+    for (let i = 0; i < out.length - 1; i++) {
+      const next = out[i + 1].showAt;
+      if (out[i].hideAt > next || next - out[i].hideAt < 0.35) out[i].hideAt = Math.max(out[i].showAt + fd, next);
+    }
+    out.forEach((c) => {
+      c.out = c.hideAt;
+      c.baseOut = c.hideAt;
+      c.start = c.showAt;
+      c.readableStart = c.showAt;
+      c.end = c.hideAt;
+      c.readableEnd = c.hideAt;
+    });
+    return out;
+  }
   // Quick Shortcuts tab (calls leoQuickEdit in host.jsx).
   const _leoIconMoveToPlayhead = _0x356675("LeoMoveToPlayhead", [
       ["path", { d: "M3 19V5", key: "leo-mtp-a" }],
@@ -81789,7 +81847,17 @@ var kK = Object[_0x332234(0xf4f)],
     };
     show("Preparing audio...");
     try {
-      return await api.transcribe(file, (msg) => show(msg));
+      const res = await api.transcribe(file, (msg) => show(msg));
+      // Free offline AI groups the words by meaning (falls back to the rules on any problem).
+      if (api.getStatus().aiInstalled && res && res.words && res.words.length) {
+        show("Grouping captions by meaning (offline AI)...");
+        try {
+          await api.groupWithAI(res.words, null, (i, n) =>
+            n > 1 && show("Grouping captions by meaning (offline AI)... " + (i + 1) + "/" + n),
+          );
+        } catch (e) {}
+      }
+      return res;
     } finally {
       try {
         _0x43c87d["dismiss"](toastId);
@@ -81807,112 +81875,100 @@ var kK = Object[_0x332234(0xf4f)],
         className: "space-y-2 p-2.5",
         children: J["jsx"]("div", {
           className: hint,
-          children: !api
-            ? "Offline captions did not load. Reload the panel."
-            : "Offline captions currently work on Windows only.",
+          children: !api ? "Offline captions did not load. Reload the panel." : "Offline captions currently work on Windows only.",
         }),
       });
     }
     const isInstalled = (id) => s.installedModels.indexOf(id) !== -1;
     const selected = s.models.filter((m) => m.id === s.model)[0] || s.models[0];
-    const downloadMB = Math.round(
-      ((s.engineInstalled ? 0 : 8194445) + (isInstalled(selected.id) ? 0 : selected.bytes)) / 1e6,
-    );
+    const downloadMB = Math.round(((s.engineInstalled ? 0 : 8194445) + (isInstalled(selected.id) ? 0 : selected.bytes)) / 1e6);
     const install = async () => {
       try {
         await api.install();
-        _0x43c87d["success"]("Offline captions ready", {
-          description: selected.label + " model installed. Upload audio or video to generate captions.",
-        });
+        _0x43c87d["success"](selected.label + " model ready");
       } catch (e) {
-        _0x43c87d["error"]("Setup failed", { description: e && e.message ? e.message : String(e) });
+        _0x43c87d["error"]("Download failed", { description: e && e.message ? e.message : String(e) });
       }
     };
-    const modelCard = (m) => {
-      const active = m.id === s.model;
-      return J["jsxs"](
+    const card = (key, active, title, top, note, onClick) =>
+      J["jsxs"](
         "button",
         {
           type: "button",
           disabled: s.installing,
-          onClick: () => api.setModel(m.id),
-          title: m.note,
+          onClick,
           className: active
             ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
             : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
           style: { textAlign: "left", opacity: active ? 1 : 0.72, cursor: "pointer" },
           children: [
-            J["jsx"]("div", {
-              className: "text-[8px] font-mono uppercase tracking-[0.16em] text-cyan-200",
-              children: isInstalled(m.id) ? "Installed" : Math.round(m.bytes / 1e6) + " MB",
-            }),
+            top && J["jsx"]("div", { className: "text-[8px] font-mono uppercase tracking-[0.16em] text-cyan-200", children: top }),
             J["jsx"]("div", {
               className: "mt-1 text-[11px] font-mono font-semibold text-foreground",
-              children: (active ? "● " : "") + m.label,
+              children: (active ? "\u25CF " : "") + title,
             }),
-            J["jsx"]("div", { className: hint, children: m.note }),
+            J["jsx"]("div", { className: hint, children: note }),
           ],
         },
-        m.id,
+        key,
       );
-    };
     return J["jsxs"]("div", {
       className: "space-y-2 p-2.5",
       children: [
-        J["jsx"]("div", {
-          className: hint,
-          style: { marginTop: 0 },
-          children:
-            "Captions are made on this PC with Whisper AI. No API key, no credits, and no internet after a one-time download.",
-        }),
         J["jsxs"]("div", {
           children: [
             J["jsx"]("label", { className: label, children: "Model" }),
-            J["jsx"]("div", { className: "grid grid-cols-3 gap-2", children: s.models.map(modelCard) }),
-          ],
-        }),
-        J["jsxs"]("div", {
-          children: [
-            J["jsx"]("label", { className: label, children: "Spoken language" }),
-            J["jsx"]("select", {
-              value: s.language,
-              disabled: s.installing,
-              onChange: (e) => api.setLanguage(e.target.value),
-              className: "h-9 text-[10px] bg-secondary/55 border-border/80 font-mono",
-              style: {
-                width: "100%",
-                borderWidth: 1,
-                borderStyle: "solid",
-                borderRadius: 6,
-                padding: "0 8px",
-                color: "inherit",
-              },
-              children: s.languages.map((l) =>
-                J["jsx"]("option", { value: l[0], style: { background: "#1b1f2a" }, children: l[1] }, l[0]),
+            J["jsx"]("div", {
+              className: "grid grid-cols-3 gap-2",
+              children: s.models.map((m) =>
+                card(m.id, m.id === s.model, m.label, isInstalled(m.id) ? "Installed" : Math.round(m.bytes / 1e6) + " MB", m.note, () => api.setModel(m.id)),
               ),
             }),
           ],
         }),
-        J["jsxs"]("label", {
-          className: hint,
-          style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 0 },
-          children: [
-            J["jsx"]("input", {
-              type: "checkbox",
-              checked: !!s.noOverlap,
-              onChange: (e) => api.setNoOverlap(e.target.checked),
-              style: { accentColor: "hsl(190 90% 55%)" },
-            }),
-            "Exact speech timing: each caption shows only while its words are spoken, one at a time (Timing and Preset KF are ignored)",
-          ],
-        }),
+        s.captionStyles &&
+          J["jsxs"]("div", {
+            children: [
+              J["jsx"]("label", { className: label, children: "Caption length" }),
+              J["jsx"]("div", {
+                className: "grid grid-cols-3 gap-2",
+                children: s.captionStyles.map((c) =>
+                  card(c.id, c.id === s.captionStyle, c.label, null, c.note, () => api.setCaptionStyle(c.id)),
+                ),
+              }),
+            ],
+          }),
+        api.installAI &&
+          J["jsxs"]("div", {
+            children: [
+              J["jsx"]("label", { className: label, children: "AI grouping (free, offline)" }),
+              s.aiInstalled
+                ? J["jsx"]("div", {
+                    className: hint,
+                    children:
+                      "On: captions follow the meaning of what is said (\"I was just trolling\" | \"the song is actually fire\"). Runs on this PC, no internet, no cost.",
+                  })
+                : J["jsx"](_0x14db90, {
+                    onClick: async () => {
+                      try {
+                        await api.installAI();
+                        _0x43c87d["success"]("AI grouping ready");
+                      } catch (e) {
+                        _0x43c87d["error"]("Download failed", { description: e && e.message ? e.message : String(e) });
+                      }
+                    },
+                    variant: "secondary",
+                    disabled: s.installing,
+                    className:
+                      "h-8 w-full text-[10px] font-mono border border-violet-300/20 bg-violet-400/8 hover:border-violet-300/35 hover:bg-violet-400/12",
+                    children: "Download AI grouping (" + s.aiMB + " MB, free, one time)",
+                  }),
+            ],
+          }),
         s.installing &&
           J["jsxs"]("div", {
             children: [
-              J["jsx"]("div", {
-                className: label,
-                children: s.stage + " " + Math.round(s.progress * 100) + "%",
-              }),
+              J["jsx"]("div", { className: label, children: s.stage + " " + Math.round(s.progress * 100) + "%" }),
               J["jsx"]("div", {
                 style: { height: 6, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" },
                 children: J["jsx"]("div", {
@@ -81926,33 +81982,212 @@ var kK = Object[_0x332234(0xf4f)],
               }),
             ],
           }),
-        !s.installing &&
-          s.error &&
-          J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: s.error }),
-        J["jsxs"]("div", {
-          className: "grid grid-cols-2 gap-2",
+        !s.installing && s.error && J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: s.error }),
+        !s.ready &&
+          !s.installing &&
+          J["jsx"](_0x14db90, {
+            onClick: install,
+            variant: "secondary",
+            className:
+              "h-8 w-full text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
+            children: "Download " + selected.label + " model (" + downloadMB + " MB, one time)",
+          }),
+      ],
+    });
+  }
+  // Audio tab: Audio Enhancer (DeepFilterNet3 on this PC; engine logic in dist-ae2020/leo-audio-enhancer.js).
+  const _leoIconAudio = _0x356675("LeoAudioWaveform", [
+    [
+      "path",
+      {
+        d: "M2 13a2 2 0 0 0 2-2V7a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0V4a2 2 0 0 1 4 0v13a2 2 0 0 0 4 0v-4a2 2 0 0 1 2-2",
+        key: "leo-aw-a",
+      },
+    ],
+  ]);
+  // Export comp audio (48 kHz stereo) -> enhance offline -> save next to the project -> add to the comp.
+  async function _leoRunAudioEnhance(api, onStage) {
+    const req = window.require || (window.cep_node && window.cep_node.require);
+    const fs = req("fs");
+    const path = req("path");
+    const os = req("os");
+    onStage("Exporting audio from your comp...");
+    let res = "";
+    try {
+      res = String((await _0xc1c86d('leoRenderCompAudio(48000, true, true, "LEO Enhance Source")')) || "");
+    } catch (e) {
+      res = "Error: " + (e && e.message ? e.message : String(e));
+    }
+    if (!res || _0x2113ce(res) || /^EvalScript error/i.test(res)) {
+      throw new Error(
+        /^EvalScript error/i.test(res)
+          ? "Restart After Effects to load the new Audio Enhancer."
+          : res.replace(/^error[:\s]*/i, "") || "No response from After Effects.",
+      );
+    }
+    const info = JSON.parse(res);
+    const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, "");
+    const safeComp = String(info.compName || "Comp").replace(/[\\/:*?"<>|]+/g, "_");
+    const outDir = info.projectDir
+      ? path.join(info.projectDir, "LEO Enhanced Audio")
+      : path.join(os.homedir(), "Documents", "LEO", "Enhanced Audio");
+    const outPath = path.join(outDir, safeComp + " enhanced " + stamp + ".wav");
+    try {
+      onStage("Enhancing voice on this PC...");
+      await api.enhance(info.path, outPath);
+    } finally {
+      try {
+        fs.unlinkSync(info.path);
+      } catch (e) {}
+    }
+    onStage("Adding enhanced audio to the comp...");
+    const added = String(
+      (await _0xc1c86d(
+        "leoImportEnhancedAudio(" +
+          JSON.stringify(outPath) +
+          "," +
+          (api.getStatus().muteOriginal ? "true" : "false") +
+          "," +
+          JSON.stringify(info.sourceLayers || "") +
+          ")",
+      )) || "",
+    );
+    if (_0x2113ce(added) || /^EvalScript error/i.test(added)) throw new Error(added.replace(/^error[:\s]*/i, ""));
+    return { message: added, file: outPath, selectedOnly: !!info.sourceLayers };
+  }
+  function _leoAudioEnhancerPanel() {
+    const J = _0xf553ed;
+    const api = window.LeoAudioEnhancer || null;
+    const [s, setS] = _0x4c7c86["useState"](() => (api ? api.getStatus() : null));
+    _0x4c7c86["useEffect"](() => (api ? api.subscribe(setS) : undefined), []);
+    const [busy, setBusy] = _0x4c7c86["useState"](false);
+    const [last, setLast] = _0x4c7c86["useState"]("");
+    const hint = "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85";
+    const label = "mb-1 block text-[9px] font-mono uppercase tracking-[0.14em] text-cyan-100/75";
+    if (!api || !s || !s.supported) {
+      return J["jsx"]("div", {
+        className: hint,
+        children: !api ? "Audio Enhancer did not load. Reload the panel." : "The Audio Enhancer currently works on Windows only.",
+      });
+    }
+    const install = async () => {
+      try {
+        await api.install();
+        _0x43c87d["success"]("Audio Enhancer ready");
+      } catch (e) {
+        _0x43c87d["error"]("Download failed", { description: e && e.message ? e.message : String(e) });
+      }
+    };
+    const run = async () => {
+      if (busy) return;
+      setBusy(true);
+      const toastId = "leo-audio-enhance";
+      try {
+        const out = await _leoRunAudioEnhance(api, (msg) =>
+          _0x43c87d["loading"](msg, { id: toastId, duration: Infinity }),
+        );
+        _0x43c87d["dismiss"](toastId);
+        setLast(out.message + " Saved: " + out.file);
+        _0x43c87d["success"]("Audio enhanced", { description: out.message });
+      } catch (e) {
+        _0x43c87d["dismiss"](toastId);
+        _0x43c87d["error"]("Audio enhance failed", { description: e && e.message ? e.message : String(e) });
+      } finally {
+        setBusy(false);
+      }
+    };
+    const strengthCard = (m) => {
+      const active = m.id === s.strength;
+      return J["jsxs"](
+        "button",
+        {
+          type: "button",
+          disabled: busy,
+          onClick: () => api.setStrength(m.id),
+          title: m.note,
+          className: active
+            ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+            : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+          style: { textAlign: "left", opacity: active ? 1 : 0.72, cursor: "pointer" },
           children: [
-            J["jsx"](_0x14db90, {
-              onClick: install,
-              variant: "secondary",
-              disabled: s.installing || s.ready,
-              className:
-                "h-8 text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
-              children: s.ready
-                ? "✓ " + selected.label + " model ready"
-                : s.installing
-                  ? "Downloading..."
-                  : "Download (" + downloadMB + " MB)",
+            J["jsx"]("div", {
+              className: "mt-1 text-[11px] font-mono font-semibold text-foreground",
+              children: (active ? "● " : "") + m.label,
             }),
-            J["jsx"](_0x14db90, {
-              onClick: () => api.openFolder(),
-              variant: "secondary",
-              className:
-                "h-8 text-[10px] font-mono border border-violet-300/20 bg-violet-400/8 hover:border-violet-300/35 hover:bg-violet-400/12",
-              children: "Open models folder",
-            }),
+            J["jsx"]("div", { className: hint, children: m.note }),
+          ],
+        },
+        m.id,
+      );
+    };
+    return J["jsxs"]("div", {
+      className: "space-y-2",
+      children: [
+        J["jsx"]("div", {
+          className: hint,
+          style: { marginTop: 0 },
+          children:
+            "Removes background noise, hum and room sound from speech on this PC (DeepFilterNet AI). The cleaned audio is added to your comp in sync, and the original is muted.",
+        }),
+        J["jsxs"]("div", {
+          children: [
+            J["jsx"]("label", { className: label, children: "Strength" }),
+            J["jsx"]("div", { className: "grid grid-cols-2 gap-2", children: s.strengths.map(strengthCard) }),
           ],
         }),
+        J["jsxs"]("label", {
+          className: hint,
+          style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer" },
+          children: [
+            J["jsx"]("input", {
+              type: "checkbox",
+              checked: !!s.muteOriginal,
+              onChange: (e) => api.setMuteOriginal(e.target.checked),
+              style: { accentColor: "hsl(190 90% 55%)" },
+            }),
+            "Mute the original audio after adding the enhanced track",
+          ],
+        }),
+        s.installing &&
+          J["jsxs"]("div", {
+            children: [
+              J["jsx"]("div", { className: label, children: s.stage + " " + Math.round(s.progress * 100) + "%" }),
+              J["jsx"]("div", {
+                style: { height: 6, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" },
+                children: J["jsx"]("div", {
+                  style: {
+                    height: "100%",
+                    width: Math.round(s.progress * 100) + "%",
+                    background: "linear-gradient(90deg,hsl(190 90% 55%),hsl(155 70% 55%))",
+                    transition: "width 0.3s",
+                  },
+                }),
+              }),
+            ],
+          }),
+        !s.installing && s.error && J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: s.error }),
+        !s.installed
+          ? J["jsx"](_0x14db90, {
+              onClick: install,
+              variant: "secondary",
+              disabled: s.installing,
+              className:
+                "h-8 w-full text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
+              children: s.installing ? "Downloading..." : "Download Audio Enhancer (" + s.engineMB + " MB, one time)",
+            })
+          : J["jsxs"](_0x14db90, {
+              onClick: run,
+              disabled: busy,
+              className:
+                "group relative h-9 w-full overflow-hidden rounded-xl text-[11px] font-mono gap-1.5 text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.16)] hover:shadow-[0_0_24px_hsl(var(--primary)/0.34)] bg-[linear-gradient(90deg,hsl(155_70%_48%),hsl(var(--primary)),hsl(190_90%_60%))]",
+              children: [J["jsx"](_leoIconAudio, { size: 0xc }), busy ? "Enhancing..." : "Enhance Audio"],
+            }),
+        J["jsx"]("div", {
+          className: "text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground/60",
+          style: { textAlign: "center" },
+          children: "Uses the selected audio layers, or the whole comp if none are selected",
+        }),
+        last && J["jsx"]("div", { className: hint, style: { wordBreak: "break-all" }, children: last }),
       ],
     });
   }
@@ -83004,6 +83239,10 @@ var kK = Object[_0x332234(0xf4f)],
             label: "Shortcuts",
             icon: _0xf553ed["jsx"](_0x3f099d, { size: 0xf }),
           },
+          audio: {
+            label: "Audio",
+            icon: _0xf553ed["jsx"](_leoIconAudio, { size: 0xf }),
+          },
         },
         _0x51933f = _0x161ea8 ? _0x5413d3 : _0x565f18;
       return _0x18644e
@@ -83867,6 +84106,12 @@ var kK = Object[_0x332234(0xf4f)],
                     _0x3b10e3 === "graphs" &&
                       _0xf553ed[_0x2de660(0x72a)](_0x41b388, {
                         children: _0xf553ed[_0x2de660(0x72a)](_0x540821, {}),
+                      }),
+                    _0x3b10e3 === "audio" &&
+                      _0xf553ed["jsx"](_0x4dc2f3, {
+                        title: "Audio Enhancer",
+                        icon: _0xf553ed["jsx"](_leoIconAudio, { size: 0xe }),
+                        children: _0xf553ed["jsx"](_leoAudioEnhancerPanel, {}),
                       }),
                     _0x3b10e3 === "shortcuts" &&
                       _0xf553ed["jsx"](_0x4dc2f3, {
