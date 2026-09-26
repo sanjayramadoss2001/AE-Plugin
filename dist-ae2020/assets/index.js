@@ -68797,7 +68797,8 @@ var kK = Object[_0x332234(0xf4f)],
           return !0x0;
         }
       }),
-      _0x2ffe99 = _0x1311b5[_0x509683(0x79f)]()[_0x509683(0xe62)] > 0xc,
+      _leoOffline = _leoUseOfflineCaptions(_0x50dc88),
+      _0x2ffe99 = _leoOffline.ready,
       _0x377f55 = _0x4c7c86["useMemo"](
         () => _0x2b0b09(_0x218fcc, _0xa29e0f),
         [_0x218fcc, _0xa29e0f],
@@ -69123,6 +69124,7 @@ var kK = Object[_0x332234(0xf4f)],
         const _0x5af52d = String(_0x2194c1 || "")["trim"](),
           _0xe5ec7c = String(_0x51a3ad || "")[_0x465c16(0x79f)]();
         if (!_0x5af52d && !_0xe5ec7c) return null;
+        if (/^leo comp audio/i.test(_0x5af52d)) return null;
         try {
           const _0x16f10b = await _0x5710e8(
             _0x465c16(0xff3) +
@@ -69466,10 +69468,10 @@ var kK = Object[_0x332234(0xf4f)],
           _0x43c87d["error"](_0x345410(0x864), { description: _0x4b99d8 });
           return;
         }
-        const _0x39ae2c = _0x1311b5[_0x345410(0x79f)]();
-        if (!_0x39ae2c) {
+        const _0x39ae2c = "";
+        if (!(window.LeoOfflineCaptions && window.LeoOfflineCaptions.getStatus().ready)) {
           _0x43c87d[_0x345410(0x1239)]("Setup\x20first", {
-            description: _0x345410(0x446),
+            description: "Download the offline caption model in Caption Setup first.",
           });
           return;
         }
@@ -69493,13 +69495,13 @@ var kK = Object[_0x332234(0xf4f)],
           _0xaa1bf4([]),
           _0x46ea50(_0x3a5831(_0x1f8fa2[_0x345410(0x330)])));
         try {
-          const _0x43f528 = await _0x130ad0(_0x1f8fa2, _0x39ae2c);
+          const _0x43f528 = await _leoTranscribeOffline(_0x1f8fa2);
           if (!_0x43f528[_0x345410(0x8fa)]["length"])
-            throw new Error(_0x345410(0xddb));
+            throw new Error("No speech was detected in this file.");
           _0x1a14a2(_0x43f528);
           const _0x3af353 = _0x114f4a(_0x43f528[_0x345410(0x8fa)], []);
           (_0x4298f(_0x3af353),
-            _0x310353[_0x345410(0x79f)]() && _0x40f0ab(!0x1),
+            false && _0x40f0ab(!0x1),
             _0x43c87d[_0x345410(0x9f6)](_0x345410(0x354), {
               description:
                 _0x43f528[_0x345410(0x8fa)][_0x345410(0xe62)] +
@@ -69508,7 +69510,8 @@ var kK = Object[_0x332234(0xf4f)],
         } catch (_0x425f32) {
           (console["error"](_0x345410(0x73a), _0x425f32),
             _0x43c87d["error"](_0x345410(0x12d2), {
-              description: _0x1188f9(_0x425f32),
+              description:
+                _0x425f32 instanceof Error ? _0x425f32.message : String(_0x425f32),
             }));
         } finally {
           _0x211e7b(!0x1);
@@ -70808,6 +70811,34 @@ var kK = Object[_0x332234(0xf4f)],
             _0x43c87d["error"](_0xdc8fe0(0x2ae), { description: _0x31d9b6 });
             return;
           }
+          try {
+            const _leoCaps = window.LeoOfflineCaptions;
+            if (!_leoCaps || _leoCaps.getStatus().noOverlap) {
+              const _leoTimes = _0x30fcc0.map((c) => ({
+                text: String(c.text || ""),
+                start: Number(typeof c.speechStart === "number" ? c.speechStart : c.start),
+                end: Number(
+                  typeof c.speechFullEnd === "number" ? c.speechFullEnd : typeof c.speechEnd === "number" ? c.speechEnd : c.end,
+                ),
+              }));
+              const _leoTimingRes = await _0x5710e8(
+                "leoApplyExactCaptionTiming(" +
+                  JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) +
+                  "," +
+                  JSON.stringify(_leoTimes) +
+                  ")",
+              );
+              if (/^(error|evalscript error)/i.test(String(_leoTimingRes || "").trim())) {
+                _0x43c87d["error"]("Exact caption timing failed", {
+                  description: /^EvalScript error/i.test(_leoTimingRes)
+                    ? "Restart After Effects to load the new caption timing."
+                    : _leoTimingRes,
+                });
+              } else if (_leoTimingRes) {
+                _0x43c87d["info"](String(_leoTimingRes));
+              }
+            }
+          } catch (_leoOverlapErr) {}
           const _0x4696e2 = {
             renderPlanLength: _0x5b8448[_0xdc8fe0(0xe62)],
             previousAppliedCount: _0x4e96e4,
@@ -71046,200 +71077,13 @@ var kK = Object[_0x332234(0xf4f)],
                           ? "bg-cyan-300\x20shadow-[0_0_10px_hsl(190_90%_55%_/_0.8)]"
                           : "bg-amber-300\x20shadow-[0_0_8px_hsl(42_95%_60%_/_0.6)]"),
                     }),
-                    _0x2ffe99 ? _0x509683(0xf23) : _0x509683(0xa39),
+                    _0x2ffe99 ? _0x509683(0xf23) : "Set up",
                   ],
                 }),
               ],
             }),
             _0x388b94 &&
-              _0xf553ed["jsx"](_0xf553ed[_0x509683(0x8bf)], {
-                children: _0xf553ed["jsxs"](_0x509683(0x487), {
-                  className: "space-y-2\x20p-2.5",
-                  children: [
-                    _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                      className: _0x509683(0xa14),
-                      children: [
-                        _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                          className: _0x509683(0x2fd),
-                          children: [
-                            _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
-                              className: _0x509683(0xb4e),
-                              children: _0xf553ed[_0x509683(0x72a)](_0x282dfa, {
-                                size: 0xb,
-                              }),
-                            }),
-                            _0xf553ed["jsx"](_0x509683(0x487), {
-                              className: _0x509683(0x10da),
-                              children: _0x509683(0xa39),
-                            }),
-                            _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
-                              className: _0x509683(0x6f8),
-                              children: _0x509683(0x10de),
-                            }),
-                            _0xf553ed["jsxs"](_0x509683(0x487), {
-                              className: _0x509683(0x553),
-                              children: [
-                                _0x509683(0x28f),
-                                _0xf553ed[_0x509683(0x72a)](_0x509683(0xebf), {
-                                  className: "text-cyan-100",
-                                  children: _0x509683(0x34e),
-                                }),
-                                ".",
-                              ],
-                            }),
-                            _0xf553ed[_0x509683(0x7b7)](_0x14db90, {
-                              type: _0x509683(0xfb8),
-                              variant: "secondary",
-                              onClick: () => _0xb377fc(_0x509683(0x558)),
-                              className:
-                                "mt-2\x20h-7\x20w-full\x20border\x20border-cyan-300/20\x20bg-cyan-400/10\x20px-2\x20text-[9px]\x20font-mono\x20text-cyan-100\x20hover:border-cyan-300/35\x20hover:bg-cyan-400/14",
-                              children: [
-                                _0xf553ed["jsx"](_0xff785, { size: 0xa }),
-                                "Open\x20API\x20Keys",
-                              ],
-                            }),
-                          ],
-                        }),
-                        _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                          className: _0x509683(0x2a3),
-                          children: [
-                            _0xf553ed["jsx"](_0x509683(0x487), {
-                              className:
-                                "mb-2\x20inline-flex\x20h-6\x20w-6\x20items-center\x20justify-center\x20rounded-lg\x20border\x20border-violet-300/25\x20bg-violet-400/12\x20text-violet-100",
-                              children: _0xf553ed["jsx"](_0x2b3401, {
-                                size: 0xb,
-                              }),
-                            }),
-                            _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
-                              className:
-                                "text-[8px]\x20font-mono\x20uppercase\x20tracking-[0.16em]\x20text-violet-200",
-                              children: _0x509683(0x99b),
-                            }),
-                            _0xf553ed["jsx"]("div", {
-                              className: _0x509683(0x6f8),
-                              children: _0x509683(0x8c6),
-                            }),
-                            _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                              className: _0x509683(0x553),
-                              children: [
-                                _0x509683(0xe36),
-                                _0xf553ed[_0x509683(0x72a)](_0x509683(0xebf), {
-                                  className: "text-violet-100",
-                                  children: _0x509683(0x8a3),
-                                }),
-                                ",\x20then\x20open\x20",
-                                _0xf553ed["jsx"](_0x509683(0xebf), {
-                                  className: _0x509683(0xf3f),
-                                  children: "Edit\x20Key",
-                                }),
-                                "\x20and\x20allow\x20",
-                                _0xf553ed["jsx"](_0x509683(0xebf), {
-                                  className: "text-violet-100",
-                                  children: "Speech\x20to\x20Text",
-                                }),
-                                _0x509683(0x12a5),
-                                _0xf553ed[_0x509683(0x72a)]("span", {
-                                  className: "text-violet-100",
-                                  children: _0x509683(0x1261),
-                                }),
-                                ".",
-                              ],
-                            }),
-                          ],
-                        }),
-                        _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                          className: _0x509683(0x13d1),
-                          children: [
-                            _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
-                              className:
-                                "mb-2\x20inline-flex\x20h-6\x20w-6\x20items-center\x20justify-center\x20rounded-lg\x20border\x20border-emerald-300/25\x20bg-emerald-400/12\x20text-emerald-100",
-                              children: _0xf553ed["jsx"](_0x476d37, {
-                                size: 0xb,
-                              }),
-                            }),
-                            _0xf553ed["jsx"](_0x509683(0x487), {
-                              className:
-                                "text-[8px]\x20font-mono\x20uppercase\x20tracking-[0.16em]\x20text-emerald-200",
-                              children: _0x509683(0xaea),
-                            }),
-                            _0xf553ed["jsx"](_0x509683(0x487), {
-                              className: _0x509683(0x6f8),
-                              children: _0x509683(0x30e),
-                            }),
-                            _0xf553ed[_0x509683(0x7b7)]("div", {
-                              className: _0x509683(0x553),
-                              children: [
-                                _0x509683(0x380),
-                                _0xf553ed[_0x509683(0x72a)]("span", {
-                                  className: "text-emerald-100",
-                                  children: "Test\x20Key",
-                                }),
-                                _0x509683(0x1e3),
-                              ],
-                            }),
-                          ],
-                        }),
-                      ],
-                    }),
-                    _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                      className: _0x509683(0xd69),
-                      children: [
-                        _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
-                          className:
-                            "absolute\x20left-0\x20top-0\x20bottom-0\x20w-[2px]\x20bg-[linear-gradient(180deg,hsl(190_90%_60%),hsl(270_85%_65%),hsl(155_70%_55%))]",
-                        }),
-                        _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                          children: [
-                            _0xf553ed[_0x509683(0x72a)]("label", {
-                              className:
-                                "mb-1\x20block\x20text-[9px]\x20font-mono\x20uppercase\x20tracking-[0.14em]\x20text-cyan-100/75",
-                              children: "ElevenLabs\x20API\x20key",
-                            }),
-                            _0xf553ed["jsx"](_0x4ec336, {
-                              type: "password",
-                              placeholder: _0x509683(0x577),
-                              value: _0x1311b5,
-                              onChange: (_0x384487) =>
-                                _0x38a2dd(_0x384487[_0x509683(0xe50)]["value"]),
-                              className:
-                                "h-9\x20text-[10px]\x20bg-secondary/55\x20border-border/80\x20font-mono\x20focus-visible:ring-primary/30",
-                            }),
-                          ],
-                        }),
-                        _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
-                          className: _0x509683(0x1105),
-                          children: [
-                            _0xf553ed[_0x509683(0x72a)](_0x14db90, {
-                              onClick: _0x543afe,
-                              variant: "secondary",
-                              className: _0x509683(0xc86),
-                              children: "Save\x20Key",
-                            }),
-                            _0xf553ed["jsx"](_0x14db90, {
-                              onClick: _0x273457,
-                              variant: _0x509683(0xca1),
-                              disabled: _0x810a5f,
-                              className:
-                                "h-8\x20text-[10px]\x20font-mono\x20border\x20border-violet-300/20\x20bg-violet-400/8\x20hover:border-violet-300/35\x20hover:bg-violet-400/12",
-                              children: _0x810a5f
-                                ? _0xf553ed["jsxs"](_0xf553ed["Fragment"], {
-                                    children: [
-                                      _0xf553ed[_0x509683(0x72a)](_0x4cb5c9, {
-                                        size: 0xa,
-                                        className: _0x509683(0x65d),
-                                      }),
-                                      _0x509683(0xa70),
-                                    ],
-                                  })
-                                : "Test\x20Key",
-                            }),
-                          ],
-                        }),
-                      ],
-                    }),
-                  ],
-                }),
-              }),
+              _0xf553ed["jsx"](_leoOfflineSetupBody, { offline: _leoOffline }),
           ],
         }),
         _0xf553ed[_0x509683(0x7b7)](_0x509683(0x487), {
@@ -71583,6 +71427,10 @@ var kK = Object[_0x332234(0xf4f)],
           _0xf553ed["jsxs"](_0x509683(0x487), {
             className: _0x509683(0x6ab),
             children: [
+              _0xf553ed["jsx"](_leoGenerateCaptionsButton, {
+                offline: _leoOffline,
+                upload: _0x48f816,
+              }),
               _0xf553ed[_0x509683(0x72a)](_0x509683(0xfb8), {
                 disabled: !_0x2ffe99,
                 onClick: () => {
@@ -71609,7 +71457,7 @@ var kK = Object[_0x332234(0xf4f)],
                       className: _0x509683(0x13b1),
                       children: _0x2ffe99
                         ? _0x509683(0xd20)
-                        : "Save\x20API\x20key\x20first",
+                        : "Set up offline captions first",
                     }),
                     _0xf553ed[_0x509683(0x72a)](_0x509683(0xebf), {
                       className: _0x509683(0x10bf),
@@ -71618,7 +71466,7 @@ var kK = Object[_0x332234(0xf4f)],
                   ],
                 }),
               }),
-              _0x310353["trim"]() &&
+              false &&
                 _0xf553ed[_0x509683(0x72a)](_0x509683(0x487), {
                   className:
                     "rounded-xl\x20border\x20border-cyan-300/16\x20bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.06),hsl(var(--card)/0.94),hsl(var(--secondary)/0.22))]\x20px-2.5\x20py-2\x20shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03)]",
@@ -72825,7 +72673,7 @@ var kK = Object[_0x332234(0xf4f)],
                     children: _0x165188,
                   }),
                   _0xf553ed["jsxs"](_0x14db90, {
-                    onClick: _0x55ea7c,
+                    onClick: (_leoOffline.applyRef.current = _0x55ea7c),
                     disabled:
                       !_0x50cc30 &&
                       _0x50a7ed >= _0x50dc88[_0x509683(0xe62)] &&
@@ -72932,7 +72780,7 @@ var kK = Object[_0x332234(0xf4f)],
                     }),
                 ],
               }),
-              _0xf553ed["jsxs"](_0x509683(0x487), {
+              !(_leoOffline.status && _leoOffline.status.noOverlap) && _0xf553ed["jsxs"](_0x509683(0x487), {
                 className: _0x509683(0x1105),
                 children: [
                   _0xf553ed[_0x509683(0x7b7)]("div", {
@@ -73139,7 +72987,7 @@ var kK = Object[_0x332234(0xf4f)],
                     ],
                   }),
                 }),
-              _0x310353[_0x509683(0x79f)]() &&
+              false &&
                 _0xf553ed["jsx"](_0x509683(0x487), {
                   className:
                     "rounded-xl\x20border\x20border-cyan-300/16\x20bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.06),hsl(var(--card)/0.94),hsl(var(--secondary)/0.22))]\x20px-2.5\x20py-2\x20shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03)]",
@@ -76323,7 +76171,7 @@ var kK = Object[_0x332234(0xf4f)],
         id: _0xd83adf(0x40e),
         question: _0xd83adf(0x3cb),
         answer:
-          "Open\x20Captions,\x20paste\x20your\x20ElevenLabs\x20API\x20key,\x20test\x20it\x20once,\x20then\x20upload\x20audio\x20or\x20video\x20and\x20generate\x20captions.\x20The\x20key\x20needs\x20Speech\x20to\x20Text\x20and\x20User\x20Read\x20enabled\x20in\x20ElevenLabs\x20so\x20the\x20extension\x20can\x20transcribe\x20audio\x20and\x20show\x20your\x20remaining\x20credits.",
+          "Open Captions, open Caption Setup and download an offline model once (Fast, Accurate or Best). After that, upload audio or video and captions are generated on this PC with Whisper. No API key, no credits, and no internet needed after the download.",
       },
       {
         id: _0xd83adf(0xae6),
@@ -81809,6 +81657,301 @@ var kK = Object[_0x332234(0xf4f)],
             "mt-2 text-[10px] font-mono leading-relaxed text-muted-foreground",
           children:
             "Select layers in the timeline, place the playhead, then click. Fit Comp works on all clips if none are selected. Each action is one Ctrl+Z.",
+        }),
+      ],
+    });
+  }
+  // Offline captions (whisper.cpp on this PC) — replaces the ElevenLabs API-key setup.
+  // The engine/model logic lives in dist-ae2020/leo-offline-captions.js (window.LeoOfflineCaptions).
+  function _leoUseOfflineCaptions(captionLines) {
+    const api = window.LeoOfflineCaptions || null;
+    const [status, setStatus] = _0x4c7c86["useState"](() =>
+      api ? api.getStatus() : null,
+    );
+    _0x4c7c86["useEffect"](() => (api ? api.subscribe(setStatus) : undefined), []);
+    // Auto-apply after "Generate Captions": the Apply button stores its latest click handler in
+    // applyRef during render; requestAutoApply() then triggers it once the new lines are rendered.
+    const applyRef = _0x4c7c86["useRef"](null);
+    const [autoApplyTick, setAutoApplyTick] = _0x4c7c86["useState"](0);
+    _0x4c7c86["useEffect"](() => {
+      if (!autoApplyTick) return;
+      setAutoApplyTick(0);
+      if (captionLines && captionLines.length && typeof applyRef.current === "function") {
+        applyRef.current();
+      }
+    }, [autoApplyTick]);
+    return {
+      api,
+      status,
+      ready: !!(status && status.ready),
+      applyRef,
+      requestAutoApply: () => setAutoApplyTick(Date.now()),
+    };
+  }
+  // One click: render the active comp's audio in AE -> transcribe offline -> apply captions.
+  async function _leoGenerateFromComp(offline, upload) {
+    const api = window.LeoOfflineCaptions;
+    if (!api || !api.getStatus().ready) {
+      _0x43c87d["error"]("Set up offline captions first", {
+        description: "Download a model in Caption Setup, then click Generate Captions.",
+      });
+      return;
+    }
+    const toastId = "leo-offline-transcribe";
+    _0x43c87d["loading"]("Exporting audio from your comp...", { id: toastId, duration: Infinity });
+    // Replace, don't stack: remove caption layers from earlier Generate runs in this comp.
+    try {
+      await _0xc1c86d("leoRemoveGeneratedCaptions()");
+    } catch (e) {}
+    let res = "";
+    try {
+      res = String((await _0xc1c86d("leoRenderCompAudio()")) || "");
+    } catch (e) {
+      res = "Error: " + (e && e.message ? e.message : String(e));
+    }
+    if (!res || _0x2113ce(res) || /^EvalScript error/i.test(res)) {
+      _0x43c87d["dismiss"](toastId);
+      _0x43c87d["error"]("Could not export comp audio", {
+        description: /^EvalScript error/i.test(res)
+          ? "Restart After Effects to load the new Generate Captions feature."
+          : res.replace(/^error[:\s]*/i, "") || "No response from After Effects.",
+      });
+      return;
+    }
+    let file;
+    try {
+      const info = JSON.parse(res);
+      const req = window.require || (window.cep_node && window.cep_node.require);
+      const fs = req("fs");
+      const bytes = fs.readFileSync(info.path);
+      file = new File([bytes], info.name, { type: "audio/wav" });
+      try {
+        fs.unlinkSync(info.path);
+      } catch (e) {}
+    } catch (e) {
+      _0x43c87d["dismiss"](toastId);
+      _0x43c87d["error"]("Could not read the exported audio", {
+        description: e && e.message ? e.message : String(e),
+      });
+      return;
+    }
+    // The normal upload handler transcribes (offline), fills the caption lines and shows its toasts.
+    await upload(file);
+    offline.requestAutoApply();
+  }
+  function _leoGenerateCaptionsButton({ offline, upload }) {
+    const J = _0xf553ed;
+    const [busy, setBusy] = _0x4c7c86["useState"](false);
+    const ready = !!(offline && offline.ready);
+    const onClick = async () => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await _leoGenerateFromComp(offline, upload);
+      } finally {
+        setBusy(false);
+      }
+    };
+    return J["jsxs"]("div", {
+      className: "space-y-2",
+      children: [
+        J["jsxs"](_0x14db90, {
+          onClick,
+          disabled: !ready || busy,
+          title: ready
+            ? "Transcribe the active composition's audio on this PC and add the captions to the timeline"
+            : "Download a model in Caption Setup first",
+          className:
+            "group relative h-9 w-full overflow-hidden rounded-xl text-[11px] font-mono gap-1.5 text-primary-foreground shadow-[0_0_20px_hsl(var(--primary)/0.16)] hover:shadow-[0_0_24px_hsl(var(--primary)/0.34)] bg-[linear-gradient(90deg,hsl(155_70%_48%),hsl(var(--primary)),hsl(190_90%_60%))]",
+          children: [
+            J["jsx"](_0x4d8d98, { size: 0xc }),
+            busy ? "Generating captions..." : "Generate Captions",
+          ],
+        }),
+        J["jsx"]("div", {
+          className: "text-[9px] font-mono uppercase tracking-[0.18em] text-muted-foreground/60",
+          style: { textAlign: "center" },
+          children: ready
+            ? "From the active comp's audio · or upload a file below"
+            : "Set up offline captions first",
+        }),
+      ],
+    });
+  }
+  async function _leoTranscribeOffline(file) {
+    const api = window.LeoOfflineCaptions;
+    if (!api) throw new Error("Offline captions did not load. Reload the panel.");
+    const toastId = "leo-offline-transcribe";
+    const show = (msg) => {
+      try {
+        _0x43c87d["loading"](msg, { id: toastId, duration: Infinity });
+      } catch (e) {}
+    };
+    show("Preparing audio...");
+    try {
+      return await api.transcribe(file, (msg) => show(msg));
+    } finally {
+      try {
+        _0x43c87d["dismiss"](toastId);
+      } catch (e) {}
+    }
+  }
+  function _leoOfflineSetupBody({ offline }) {
+    const J = _0xf553ed;
+    const api = offline && offline.api;
+    const s = offline && offline.status;
+    const hint = "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85";
+    const label = "mb-1 block text-[9px] font-mono uppercase tracking-[0.14em] text-cyan-100/75";
+    if (!api || !s || !s.supported) {
+      return J["jsx"]("div", {
+        className: "space-y-2 p-2.5",
+        children: J["jsx"]("div", {
+          className: hint,
+          children: !api
+            ? "Offline captions did not load. Reload the panel."
+            : "Offline captions currently work on Windows only.",
+        }),
+      });
+    }
+    const isInstalled = (id) => s.installedModels.indexOf(id) !== -1;
+    const selected = s.models.filter((m) => m.id === s.model)[0] || s.models[0];
+    const downloadMB = Math.round(
+      ((s.engineInstalled ? 0 : 8194445) + (isInstalled(selected.id) ? 0 : selected.bytes)) / 1e6,
+    );
+    const install = async () => {
+      try {
+        await api.install();
+        _0x43c87d["success"]("Offline captions ready", {
+          description: selected.label + " model installed. Upload audio or video to generate captions.",
+        });
+      } catch (e) {
+        _0x43c87d["error"]("Setup failed", { description: e && e.message ? e.message : String(e) });
+      }
+    };
+    const modelCard = (m) => {
+      const active = m.id === s.model;
+      return J["jsxs"](
+        "button",
+        {
+          type: "button",
+          disabled: s.installing,
+          onClick: () => api.setModel(m.id),
+          title: m.note,
+          className: active
+            ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+            : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+          style: { textAlign: "left", opacity: active ? 1 : 0.72, cursor: "pointer" },
+          children: [
+            J["jsx"]("div", {
+              className: "text-[8px] font-mono uppercase tracking-[0.16em] text-cyan-200",
+              children: isInstalled(m.id) ? "Installed" : Math.round(m.bytes / 1e6) + " MB",
+            }),
+            J["jsx"]("div", {
+              className: "mt-1 text-[11px] font-mono font-semibold text-foreground",
+              children: (active ? "● " : "") + m.label,
+            }),
+            J["jsx"]("div", { className: hint, children: m.note }),
+          ],
+        },
+        m.id,
+      );
+    };
+    return J["jsxs"]("div", {
+      className: "space-y-2 p-2.5",
+      children: [
+        J["jsx"]("div", {
+          className: hint,
+          style: { marginTop: 0 },
+          children:
+            "Captions are made on this PC with Whisper AI. No API key, no credits, and no internet after a one-time download.",
+        }),
+        J["jsxs"]("div", {
+          children: [
+            J["jsx"]("label", { className: label, children: "Model" }),
+            J["jsx"]("div", { className: "grid grid-cols-3 gap-2", children: s.models.map(modelCard) }),
+          ],
+        }),
+        J["jsxs"]("div", {
+          children: [
+            J["jsx"]("label", { className: label, children: "Spoken language" }),
+            J["jsx"]("select", {
+              value: s.language,
+              disabled: s.installing,
+              onChange: (e) => api.setLanguage(e.target.value),
+              className: "h-9 text-[10px] bg-secondary/55 border-border/80 font-mono",
+              style: {
+                width: "100%",
+                borderWidth: 1,
+                borderStyle: "solid",
+                borderRadius: 6,
+                padding: "0 8px",
+                color: "inherit",
+              },
+              children: s.languages.map((l) =>
+                J["jsx"]("option", { value: l[0], style: { background: "#1b1f2a" }, children: l[1] }, l[0]),
+              ),
+            }),
+          ],
+        }),
+        J["jsxs"]("label", {
+          className: hint,
+          style: { display: "flex", alignItems: "center", gap: 8, cursor: "pointer", marginTop: 0 },
+          children: [
+            J["jsx"]("input", {
+              type: "checkbox",
+              checked: !!s.noOverlap,
+              onChange: (e) => api.setNoOverlap(e.target.checked),
+              style: { accentColor: "hsl(190 90% 55%)" },
+            }),
+            "Exact speech timing: each caption shows only while its words are spoken, one at a time (Timing and Preset KF are ignored)",
+          ],
+        }),
+        s.installing &&
+          J["jsxs"]("div", {
+            children: [
+              J["jsx"]("div", {
+                className: label,
+                children: s.stage + " " + Math.round(s.progress * 100) + "%",
+              }),
+              J["jsx"]("div", {
+                style: { height: 6, borderRadius: 3, background: "rgba(255,255,255,0.08)", overflow: "hidden" },
+                children: J["jsx"]("div", {
+                  style: {
+                    height: "100%",
+                    width: Math.round(s.progress * 100) + "%",
+                    background: "linear-gradient(90deg,hsl(190 90% 55%),hsl(155 70% 55%))",
+                    transition: "width 0.3s",
+                  },
+                }),
+              }),
+            ],
+          }),
+        !s.installing &&
+          s.error &&
+          J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: s.error }),
+        J["jsxs"]("div", {
+          className: "grid grid-cols-2 gap-2",
+          children: [
+            J["jsx"](_0x14db90, {
+              onClick: install,
+              variant: "secondary",
+              disabled: s.installing || s.ready,
+              className:
+                "h-8 text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
+              children: s.ready
+                ? "✓ " + selected.label + " model ready"
+                : s.installing
+                  ? "Downloading..."
+                  : "Download (" + downloadMB + " MB)",
+            }),
+            J["jsx"](_0x14db90, {
+              onClick: () => api.openFolder(),
+              variant: "secondary",
+              className:
+                "h-8 text-[10px] font-mono border border-violet-300/20 bg-violet-400/8 hover:border-violet-300/35 hover:bg-violet-400/12",
+              children: "Open models folder",
+            }),
+          ],
         }),
       ],
     });
