@@ -5807,6 +5807,79 @@ function _leoNativeSplitLayer(comp, layers, t, halfFrame, removeLeft) {
         (skipped > 0 ? " (" + skipped + " skipped)" : "") + ".";
 }
 
+// Shrinks the comp to the span of its clips: shifts everything so the earliest clip starts
+// at 0:00 and ends the comp at the latest clip end. Uses the selected layers if any, else all.
+function _leoFitCompToClips(comp) {
+    if (comp.numLayers === 0) return "Error: The composition has no layers.";
+
+    var sel = _getSelectedLayers(comp);
+    var useSelection = sel && sel.length > 0;
+    var layers = [];
+    if (useSelection) {
+        for (var i = 0; i < sel.length; i++) layers.push(sel[i]);
+    } else {
+        for (var j = 1; j <= comp.numLayers; j++) layers.push(comp.layer(j));
+    }
+
+    var minIn = null;
+    var maxOut = null;
+    for (var k = 0; k < layers.length; k++) {
+        var a = Math.min(layers[k].inPoint, layers[k].outPoint);
+        var b = Math.max(layers[k].inPoint, layers[k].outPoint);
+        if (minIn === null || a < minIn) minIn = a;
+        if (maxOut === null || b > maxOut) maxOut = b;
+    }
+
+    var frame = comp.frameDuration;
+    var shift = minIn; // amount to move everything left
+    var newDuration = Math.max(frame, Math.round((maxOut - minIn) / frame) * frame);
+    if (Math.abs(shift) < frame / 2 && Math.abs(newDuration - comp.duration) < frame / 2) {
+        return "Comp already fits the clips.";
+    }
+
+    app.beginUndoGroup("Fit Comp To Clips");
+    try {
+        if (Math.abs(shift) >= frame / 2) {
+            // Move every layer (not just the selection) so the timeline stays in sync.
+            for (var n = 1; n <= comp.numLayers; n++) {
+                var lyr = comp.layer(n);
+                var wasLocked = lyr.locked;
+                if (wasLocked) lyr.locked = false;
+                lyr.startTime -= shift;
+                if (wasLocked) lyr.locked = true;
+            }
+
+            // Shift comp markers (beat markers etc.) by the same amount.
+            try {
+                var markers = comp.markerProperty;
+                if (markers && markers.numKeys > 0) {
+                    var saved = [];
+                    for (var mk = 1; mk <= markers.numKeys; mk++) {
+                        saved.push({ time: markers.keyTime(mk), value: markers.keyValue(mk) });
+                    }
+                    for (var rm = markers.numKeys; rm >= 1; rm--) markers.removeKey(rm);
+                    for (var s = 0; s < saved.length; s++) {
+                        var newTime = saved[s].time - shift;
+                        if (newTime >= 0) markers.setValueAtTime(newTime, saved[s].value);
+                    }
+                }
+            } catch (eMarkers) {}
+        }
+
+        comp.duration = newDuration;
+        comp.workAreaStart = 0;
+        comp.workAreaDuration = newDuration;
+        if (comp.time > newDuration) comp.time = 0;
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+
+    return "Comp fitted to " + (useSelection ? "selected clips" : "clips") + ": " +
+        (Math.round(newDuration * 100) / 100) + "s.";
+}
+
 // Quick Shortcuts tab: edits the selected layers at the current playhead.
 // action: "moveToCompStart" | "moveToPlayhead" | "split" | "trimLeft" | "trimRight"
 function leoQuickEdit(action) {
@@ -5815,12 +5888,15 @@ function leoQuickEdit(action) {
         moveToPlayhead: "Move Layer To Playhead",
         split: "Split Layer At Playhead",
         trimLeft: "Remove Left Of Playhead",
-        trimRight: "Remove Right Of Playhead"
+        trimRight: "Remove Right Of Playhead",
+        fitCompToClips: "Fit Comp To Clips"
     };
     if (!undoNames.hasOwnProperty(action)) return "Error: Unknown shortcut " + action;
 
     var comp = _aeActiveComp();
     if (!comp) return "Error: Open a composition first.";
+
+    if (action === "fitCompToClips") return _leoFitCompToClips(comp);
 
     var sel = _getSelectedLayers(comp);
     if (!sel || sel.length === 0) return "Error: Select at least one layer.";

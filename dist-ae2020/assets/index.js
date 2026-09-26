@@ -81686,6 +81686,12 @@ var kK = Object[_0x332234(0xf4f)],
       ["path", { d: "m13 8 7 8", key: "leo-tr-b" }],
       ["path", { d: "m20 8-7 8", key: "leo-tr-c" }],
     ]),
+    _leoIconFitComp = _0x356675("LeoFitComp", [
+      ["path", { d: "m15 15 6 6m-6-6v4.8m0-4.8h4.8", key: "leo-fc-a" }],
+      ["path", { d: "M9 19.8V15m0 0H4.2M9 15l-6 6", key: "leo-fc-b" }],
+      ["path", { d: "M15 4.2V9m0 0h4.8M15 9l6-6", key: "leo-fc-c" }],
+      ["path", { d: "M9 4.2V9m0 0H4.2M9 9 3 3", key: "leo-fc-d" }],
+    ]),
     _leoQuickShortcutItems = [
       {
         id: "moveToCompStart",
@@ -81727,6 +81733,16 @@ var kK = Object[_0x332234(0xf4f)],
         title: "Trim away everything after the playhead",
         icon: _leoIconTrimRight,
         tone: "glow-btn-red",
+      },
+      {
+        id: "fitCompToClips",
+        label: "Fit Comp to Clips",
+        hint: "Shrink",
+        title:
+          "Shrink the composition to run from the first clip start to the last clip end (selected layers, or all if none selected)",
+        icon: _leoIconFitComp,
+        tone: "glow-btn-lavender",
+        wide: true,
       },
     ];
   function _leoQuickShortcuts() {
@@ -81792,7 +81808,7 @@ var kK = Object[_0x332234(0xf4f)],
           className:
             "mt-2 text-[10px] font-mono leading-relaxed text-muted-foreground",
           children:
-            "Select layers in the timeline, place the playhead, then click. Each action is one Ctrl+Z.",
+            "Select layers in the timeline, place the playhead, then click. Fit Comp works on all clips if none are selected. Each action is one Ctrl+Z.",
         }),
       ],
     });
