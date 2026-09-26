@@ -81663,8 +81663,156 @@ var kK = Object[_0x332234(0xf4f)],
       "templates",
       "beats",
       _0xd83adf(0x52d),
+      "shortcuts",
     ],
     _0x5bcfe4 = "dripz-tab-order";
+  // Quick Shortcuts tab (calls leoQuickEdit in host.jsx).
+  const _leoIconMoveToPlayhead = _0x356675("LeoMoveToPlayhead", [
+      ["path", { d: "M3 19V5", key: "leo-mtp-a" }],
+      ["path", { d: "m13 6-6 6 6 6", key: "leo-mtp-b" }],
+      ["path", { d: "M7 12h14", key: "leo-mtp-c" }],
+    ]),
+    _leoIconMoveToCompStart = _0x356675("LeoMoveToCompStart", [
+      ["path", { d: "M19 20 9 12l10-8v16z", key: "leo-mcs-a" }],
+      ["path", { d: "M5 19V5", key: "leo-mcs-b" }],
+    ]),
+    _leoIconTrimLeft = _0x356675("LeoTrimLeft", [
+      ["path", { d: "M15 3v18", key: "leo-tl-a" }],
+      ["path", { d: "m4 8 7 8", key: "leo-tl-b" }],
+      ["path", { d: "m11 8-7 8", key: "leo-tl-c" }],
+    ]),
+    _leoIconTrimRight = _0x356675("LeoTrimRight", [
+      ["path", { d: "M9 3v18", key: "leo-tr-a" }],
+      ["path", { d: "m13 8 7 8", key: "leo-tr-b" }],
+      ["path", { d: "m20 8-7 8", key: "leo-tr-c" }],
+    ]),
+    _leoIconFitComp = _0x356675("LeoFitComp", [
+      ["path", { d: "m15 15 6 6m-6-6v4.8m0-4.8h4.8", key: "leo-fc-a" }],
+      ["path", { d: "M9 19.8V15m0 0H4.2M9 15l-6 6", key: "leo-fc-b" }],
+      ["path", { d: "M15 4.2V9m0 0h4.8M15 9l6-6", key: "leo-fc-c" }],
+      ["path", { d: "M9 4.2V9m0 0H4.2M9 9 3 3", key: "leo-fc-d" }],
+    ]),
+    _leoQuickShortcutItems = [
+      {
+        id: "moveToCompStart",
+        label: "Move to Comp Start",
+        hint: "0:00",
+        title: "Move the selected layers so they start at the beginning of the composition",
+        icon: _leoIconMoveToCompStart,
+        tone: "glow-btn-lavender",
+      },
+      {
+        id: "moveToPlayhead",
+        label: "Move to Playhead",
+        hint: "Start",
+        title: "Move the selected layers so they start at the playhead",
+        icon: _leoIconMoveToPlayhead,
+        tone: "glow-btn-lavender",
+      },
+      {
+        id: "split",
+        label: "Split",
+        hint: "Cut",
+        title: "Split the selected layers at the playhead",
+        icon: _0x3f099d,
+        tone: "glow-btn-gold",
+        wide: true,
+      },
+      {
+        id: "trimLeft",
+        label: "Remove Left",
+        hint: "Trim In",
+        title: "Trim away everything before the playhead",
+        icon: _leoIconTrimLeft,
+        tone: "glow-btn-red",
+      },
+      {
+        id: "trimRight",
+        label: "Remove Right",
+        hint: "Trim Out",
+        title: "Trim away everything after the playhead",
+        icon: _leoIconTrimRight,
+        tone: "glow-btn-red",
+      },
+      {
+        id: "fitCompToClips",
+        label: "Fit Comp to Clips",
+        hint: "Shrink",
+        title:
+          "Shrink the composition to run from the first clip start to the last clip end (selected layers, or all if none selected)",
+        icon: _leoIconFitComp,
+        tone: "glow-btn-lavender",
+        wide: true,
+      },
+    ];
+  function _leoQuickShortcuts() {
+    const [busy, setBusy] = _0x4c7c86["useState"](""),
+      run = async (item) => {
+        if (busy) return;
+        setBusy(item.id);
+        try {
+          const res = await _0xc1c86d('leoQuickEdit("' + item.id + '")');
+          if (_0x2113ce(res) || /^EvalScript error/i.test(res)) {
+            _0x43c87d["error"](item.label + " failed", {
+              description: /^EvalScript error/i.test(res)
+                ? "Reload the panel or restart After Effects to load the new shortcuts."
+                : res.replace(/^error[:\s]*/i, ""),
+            });
+            return;
+          }
+          _0x43c87d["success"](res || item.label + " done");
+        } catch (err) {
+          _0x43c87d["error"](item.label + " failed", {
+            description: err instanceof Error ? err.message : "Unknown error",
+          });
+        } finally {
+          setBusy("");
+        }
+      };
+    return _0xf553ed["jsxs"]("div", {
+      className: "space-y-1.5",
+      children: [
+        _0xf553ed["jsx"]("div", {
+          className: "grid grid-cols-2 gap-1.5 items-start",
+          children: _leoQuickShortcutItems.map((item) =>
+            _0xf553ed["jsxs"](
+              _0x14db90,
+              {
+                onClick: () => run(item),
+                disabled: !!busy,
+                title: item.title,
+                style: item.wide ? { gridColumn: "1 / -1" } : undefined,
+                className:
+                  "w-full h-8 justify-between text-[10px] font-mono gap-1 px-2 glow-btn " +
+                  item.tone,
+                children: [
+                  _0xf553ed["jsxs"]("span", {
+                    className: "flex min-w-0 items-center gap-1",
+                    children: [
+                      _0xf553ed["jsx"](item.icon, { size: 0xc }),
+                      item.label,
+                    ],
+                  }),
+                  _0xf553ed["jsx"]("span", {
+                    className:
+                      "hidden min-[420px]:inline text-[9px] uppercase tracking-[0.16em] text-white/70",
+                    children: item.hint,
+                  }),
+                ],
+              },
+              item.id,
+            ),
+          ),
+        }),
+        _0xf553ed["jsx"]("div", {
+          className:
+            "mt-2 text-[10px] font-mono leading-relaxed text-muted-foreground",
+          children:
+            "Select layers in the timeline, place the playhead, then click. Fit Comp works on all clips if none are selected. Each action is one Ctrl+Z.",
+        }),
+      ],
+    });
+  }
   function _0x109f2d() {
     var _0x36c588 = _0xd83adf;
     try {
@@ -82709,6 +82857,10 @@ var kK = Object[_0x332234(0xf4f)],
             label: _0x2de660(0xb5f),
             icon: _0xf553ed[_0x2de660(0x72a)](_0x50334a, { size: 0xf }),
           },
+          shortcuts: {
+            label: "Shortcuts",
+            icon: _0xf553ed["jsx"](_0x3f099d, { size: 0xf }),
+          },
         },
         _0x51933f = _0x161ea8 ? _0x5413d3 : _0x565f18;
       return _0x18644e
@@ -83572,6 +83724,12 @@ var kK = Object[_0x332234(0xf4f)],
                     _0x3b10e3 === "graphs" &&
                       _0xf553ed[_0x2de660(0x72a)](_0x41b388, {
                         children: _0xf553ed[_0x2de660(0x72a)](_0x540821, {}),
+                      }),
+                    _0x3b10e3 === "shortcuts" &&
+                      _0xf553ed["jsx"](_0x4dc2f3, {
+                        title: "Quick Shortcuts",
+                        icon: _0xf553ed["jsx"](_0x3f099d, { size: 0xe }),
+                        children: _0xf553ed["jsx"](_leoQuickShortcuts, {}),
                       }),
                   ],
                 }),
