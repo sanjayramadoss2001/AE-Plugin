@@ -6009,11 +6009,11 @@ function _leoCompHasAudio(comp) {
 }
 
 // Point an output module at an audio-only WAV. Returns true when the format is confirmed as WAV.
-function _leoSetWavOutput(om) {
+function _leoSetWavOutput(om, sampleRate, stereo) {
     try { om.setSettings({ "Format": "WAV" }); } catch (eFormat) {}
     try { om.setSettings({ "Output Audio": "On" }); } catch (eAudio) {}
-    try { om.setSettings({ "Audio Sample Rate": 16000 }); } catch (eRate) {}
-    try { om.setSettings({ "Audio Channels": "Mono" }); } catch (eCh) {}
+    try { om.setSettings({ "Audio Sample Rate": sampleRate || 16000 }); } catch (eRate) {}
+    try { om.setSettings({ "Audio Channels": stereo ? "Stereo" : "Mono" }); } catch (eCh) {}
     try { om.setSettings({ "Audio Bit Depth": "16 Bit" }); } catch (eBits) {}
 
     var format = "";
@@ -6033,11 +6033,13 @@ function _leoSetWavOutput(om) {
     return false;
 }
 
-// Renders the whole active comp's audio (comp time 0 -> end) to %TEMP%\LEO Comp Audio - <comp>.wav.
-// Returns JSON { path, name, duration } or "Error: ...".
-function leoRenderCompAudio() {
+// Renders the active comp's audio (comp time 0 -> end) to %TEMP%\<prefix> - <comp> <time>.wav.
+// Defaults (no arguments) = captions: 16 kHz mono, whole comp, prefix "LEO Comp Audio".
+// useSelection: if audible layers are selected, only they are heard (temporarily soloed).
+// Returns JSON { path, name, duration, projectDir, compName, sourceLayers } or "Error: ...".
+function leoRenderCompAudio(sampleRate, stereo, useSelection, filePrefix) {
     var comp = _aeActiveComp();
-    if (!comp) return "Error: Open the composition you want captions for first.";
+    if (!comp) return "Error: Open the composition you want to use first.";
     if (!_leoCompHasAudio(comp)) return "Error: This composition has no audible layers. Turn on audio for your video or add an audio layer.";
 
     var rq = app.project.renderQueue;
@@ -6050,7 +6052,34 @@ function leoRenderCompAudio() {
     // so reusing one name made a new Generate continue the previous batch.
     var now = new Date();
     var stamp = ("0" + now.getHours()).slice(-2) + ("0" + now.getMinutes()).slice(-2) + ("0" + now.getSeconds()).slice(-2);
-    var outFile = new File(Folder.temp.fsName + "/LEO Comp Audio - " + safeName + " " + stamp + ".wav");
+    var outFile = new File(Folder.temp.fsName + "/" + (filePrefix || "LEO Comp Audio") + " - " + safeName + " " + stamp + ".wav");
+
+    // Render respects solo switches. So for the render: solo exactly the selected audible layers
+    // (useSelection), or clear every solo (whole comp). All solo switches are restored afterwards.
+    var sourceLayers = [];
+    var soloBackup = [];
+    var selAudio = [];
+    if (useSelection) {
+        var sel = _getSelectedLayers(comp);
+        for (var si = 0; si < sel.length; si++) {
+            try { if ((sel[si] instanceof AVLayer) && sel[si].hasAudio) selAudio.push(sel[si]); } catch (eSel) {}
+        }
+    }
+    var soloTarget = {};
+    for (var sa = 0; sa < selAudio.length; sa++) {
+        soloTarget[selAudio[sa].index] = true;
+        sourceLayers.push(selAudio[sa].index);
+    }
+    for (var li = 1; li <= comp.numLayers; li++) {
+        try {
+            var sl = comp.layer(li);
+            var wantSolo = !!soloTarget[li];
+            if (sl.solo !== wantSolo) {
+                soloBackup.push({ layer: sl, solo: sl.solo });
+                sl.solo = wantSolo;
+            }
+        } catch (eSoloSet) {}
+    }
     try { if (outFile.exists) outFile.remove(); } catch (eOld) {}
 
     // Only our item may render: pause anything else that is queued, restore afterwards.
@@ -6070,7 +6099,7 @@ function leoRenderCompAudio() {
         item.timeSpanStart = 0;
         item.timeSpanDuration = comp.duration;
         var om = item.outputModule(1);
-        if (!_leoSetWavOutput(om)) {
+        if (!_leoSetWavOutput(om, sampleRate, stereo)) {
             error = "Error: Could not set a WAV audio output in the Render Queue.";
         } else {
             om.file = outFile;
@@ -6080,6 +6109,9 @@ function leoRenderCompAudio() {
         error = "Error: Audio export failed: " + e.toString();
     } finally {
         try { if (item) item.remove(); } catch (eRemove) {}
+        for (var sb = 0; sb < soloBackup.length; sb++) {
+            try { soloBackup[sb].layer.solo = soloBackup[sb].solo; } catch (eSoloBack) {}
+        }
         for (var k = 0; k < paused.length; k++) {
             try { paused[k].render = true; } catch (eRestore) {}
         }
@@ -6097,7 +6129,10 @@ function leoRenderCompAudio() {
     return "{"
         + "\"path\":\"" + _escapeJSONValue(outFile.fsName) + "\","
         + "\"name\":\"" + _escapeJSONValue(File.decode(outFile.name)) + "\","
-        + "\"duration\":" + _aeSafeFloat(comp.duration, 0)
+        + "\"duration\":" + _aeSafeFloat(comp.duration, 0) + ","
+        + "\"projectDir\":\"" + _escapeJSONValue(app.project.file ? app.project.file.parent.fsName : "") + "\","
+        + "\"compName\":\"" + _escapeJSONValue(comp.name) + "\","
+        + "\"sourceLayers\":\"" + sourceLayers.join(",") + "\""
         + "}";
 }
 
@@ -6267,4 +6302,64 @@ function leoRemoveGeneratedCaptions() {
         app.endUndoGroup();
     }
     return "Removed " + removed + " previous caption layer" + (removed === 1 ? "" : "s") + ".";
+}
+
+
+// ---- Audio Enhancer: bring the enhanced WAV back into the comp ----
+// Imports wavPath into the project folder "LEO Enhanced Audio", adds it to the active comp at 0:00
+// (the source was rendered from comp time 0, so it lines up exactly) and optionally mutes the originals:
+// the layers listed in sourceCsv (layer indices from the export) or, if empty, every audible layer.
+function leoImportEnhancedAudio(wavPath, muteOriginal, sourceCsv) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open the composition first.";
+    var f = new File(wavPath);
+    if (!f.exists) return "Error: Enhanced audio file not found: " + wavPath;
+
+    var wanted = {};
+    var onlyListed = false;
+    var parts = String(sourceCsv || "").split(",");
+    for (var p = 0; p < parts.length; p++) {
+        var n = parseInt(parts[p], 10);
+        if (!isNaN(n)) { wanted[n] = true; onlyListed = true; }
+    }
+
+    var muted = 0;
+    app.beginUndoGroup("Add Enhanced Audio");
+    try {
+        if (muteOriginal) {
+            // Before adding the new layer, so the exported layer indices still match.
+            for (var i = 1; i <= comp.numLayers; i++) {
+                var l = comp.layer(i);
+                if (onlyListed && !wanted[i]) continue;
+                try {
+                    if ((l instanceof AVLayer) && l.hasAudio && l.audioEnabled) {
+                        var wasLocked = l.locked;
+                        if (wasLocked) l.locked = false;
+                        l.audioEnabled = false;
+                        if (wasLocked) l.locked = true;
+                        muted++;
+                    }
+                } catch (eMute) {}
+            }
+        }
+
+        var item = app.project.importFile(new ImportOptions(f));
+        var folder = null;
+        for (var k = 1; k <= app.project.numItems; k++) {
+            var it = app.project.item(k);
+            if ((it instanceof FolderItem) && it.name === "LEO Enhanced Audio") { folder = it; break; }
+        }
+        if (!folder) folder = app.project.items.addFolder("LEO Enhanced Audio");
+        try { item.parentFolder = folder; } catch (eFolder) {}
+
+        var layer = comp.layers.add(item);
+        layer.startTime = 0;
+        layer.name = "Enhanced Audio (LEO)";
+        try { layer.moveToBeginning(); } catch (eMove) {}
+    } catch (e) {
+        return "Error: Could not add the enhanced audio: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return "Added enhanced audio to " + comp.name + (muted ? " and muted " + muted + " original audio layer" + (muted === 1 ? "" : "s") : "") + ".";
 }
