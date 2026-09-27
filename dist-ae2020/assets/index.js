@@ -81994,7 +81994,7 @@ var kK = Object[_0x332234(0xf4f)],
                 ],
               }),
               J["jsx"]("div", {
-                className: "grid grid-cols-3 gap-2",
+                className: "grid grid-cols-2 gap-2",
                 children: animations.map((a) =>
                   J["jsxs"](
                     "button",
