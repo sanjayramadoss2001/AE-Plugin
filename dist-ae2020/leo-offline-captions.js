@@ -40,11 +40,12 @@
   var KEY_NO_OVERLAP = "leo_caption_no_overlap";
   var KEY_WORD_FADE = "leo_caption_word_fade"; // legacy checkbox, migrated to KEY_ANIMATION
   var KEY_CAPTION_PRESET = "leo_caption_text_preset"; // JSON { name, path } of an .ffx applied to every caption
-  var KEY_ANIMATION = "leo_caption_animation"; // "none" | "fade" | "fadeup", asked before each Generate
+  var KEY_ANIMATION = "leo_caption_animation"; // "none" | "fade" | "fadeup" | "fadescale", asked before each Generate
   var ANIMATIONS = [
     { id: "none", label: "Regular", note: "Plain captions, no word animation" },
     { id: "fade", label: "Fade Up Words", note: "Like After Effects' Fade Up Words, each word fades in as it is spoken" },
     { id: "fadeup", label: "Rise Up Words", note: "Each word fades in and slides up into place" },
+    { id: "fadescale", label: "Fade Up + Scale", note: "Fade Up Words while the caption zooms in from 100% to 120%, easy ease" },
   ];
 
   function currentAnimation() {
@@ -54,7 +55,7 @@
       writeSetting("leo_caption_animation_v2", "1");
     }
     var id = readSetting(KEY_ANIMATION, "");
-    if (id === "none" || id === "fade" || id === "fadeup") return id;
+    if (id === "none" || id === "fade" || id === "fadeup" || id === "fadescale") return id;
     return readSetting(KEY_WORD_FADE, "1") === "0" ? "none" : "fade";
   }
   var KEY_CLEAN_VOICE = "leo_caption_clean_voice"; // "1" (default): DeepFilterNet-clean the voice before Whisper // "1" (default): trim captions so only one shows at a time
@@ -256,7 +257,7 @@
   }
 
   function setAnimation(id) {
-    writeSetting(KEY_ANIMATION, id === "none" || id === "fadeup" ? id : "fade");
+    writeSetting(KEY_ANIMATION, id === "none" || id === "fadeup" || id === "fadescale" ? id : "fade");
     notify();
   }
 

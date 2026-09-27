@@ -6384,14 +6384,37 @@ function _leoCountWords(text) {
     return n;
 }
 
+// Cleanup for captions made by the first Fade Up + Scale version, which scaled each word (Anchor Point Grouping =
+// Word, Alignment 0,-50): when that animator is replaced, grouping goes back to AE's default (Character, 0,0).
+function _leoSetWordGrouping(layer, byWord) {
+    try {
+        var more = layer.property("ADBE Text Properties").property("ADBE Text More Options");
+        more.property("ADBE Text Anchor Point Option").setValue(byWord ? 2 : 1); // 1 Character, 2 Word, 3 Line, 4 All
+        layer.property("ADBE Text Properties").property("ADBE Text More Options").property("ADBE Text Anchor Point Align").setValue(byWord ? [0, -50] : [0, 0]);
+    } catch (e) {}
+}
+
+// true if the layer's LEO Word Fade scales words (so removing it should undo the word grouping).
+function _leoWordFadeHasScale(layer) {
+    var animators = layer.property("ADBE Text Properties").property("ADBE Text Animators");
+    for (var i = 1; i <= animators.numProperties; i++) {
+        if (animators.property(i).name !== "LEO Word Fade") continue;
+        try { if (animators.property(i).property("ADBE Text Animator Properties").property("ADBE Text Scale 3D")) return true; } catch (e) {}
+    }
+    return false;
+}
+
 function _leoRemoveWordFade(layer) {
+    var hadScale = _leoWordFadeHasScale(layer);
     function animators() { return layer.property("ADBE Text Properties").property("ADBE Text Animators"); }
     for (var r = animators().numProperties; r >= 1; r--) {
         if (animators().property(r).name === "LEO Word Fade") animators().property(r).remove();
     }
+    if (hadScale) _leoSetWordGrouping(layer, false);
 }
 
 // mode: "fade" = Fade Up Words (opacity only, like AE's preset), "fadeup" = Rise Up Words (+ slide up).
+// (Fade Up + Scale uses "fade" here; the layer zoom is added separately by _leoAddZoom.)
 function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
     var textDoc = layer.property("ADBE Text Properties").property("ADBE Text Document").value;
     var count = _leoCountWords(textDoc.text);
@@ -6411,9 +6434,11 @@ function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
     function animators() { return layer.property("ADBE Text Properties").property("ADBE Text Animators"); }
 
     // Replace an earlier LEO Word Fade (Rebuild).
+    var hadScale = _leoWordFadeHasScale(layer);
     for (var r = animators().numProperties; r >= 1; r--) {
         if (animators().property(r).name === "LEO Word Fade") animators().property(r).remove();
     }
+    if (hadScale) _leoSetWordGrouping(layer, false);
 
     animators().addProperty("ADBE Text Animator");
     var animIndex = animators().numProperties;
@@ -6456,8 +6481,84 @@ function _leoAddWordFadeToLayer(layer, wordTimes, fade, frame, mode) {
     return true;
 }
 
+// Fade Up + Scale: on top of Fade Up Words, the caption layer itself zooms in while it is on screen -
+// Transform > Scale goes from its current value (100%) to x1.2 (120%) between the layer's in and out points,
+// both keys Easy Ease. The starting scale is kept in a "LEO_ZOOM::x,y,z" comment line so Rebuild or another
+// animation choice can take LEO's keys back off. Layers whose scale the user animates are left alone.
+var LEO_ZOOM_TAG = "LEO_ZOOM::";
+
+function _leoCommentLines(layer) {
+    return String(layer.comment || "").split(/\r\n|\r|\n/);
+}
+
+function _leoZoomBase(layer) {
+    var lines = _leoCommentLines(layer);
+    for (var i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf(LEO_ZOOM_TAG) !== 0) continue;
+        var parts = lines[i].substring(LEO_ZOOM_TAG.length).split(",");
+        var base = [];
+        for (var j = 0; j < parts.length; j++) base.push(Number(parts[j]));
+        return base.length >= 2 && !isNaN(base[0]) && !isNaN(base[1]) ? base : null;
+    }
+    return null;
+}
+
+function _leoSetZoomComment(layer, base) {
+    var lines = _leoCommentLines(layer);
+    var keep = [];
+    for (var i = 0; i < lines.length; i++) if (lines[i].indexOf(LEO_ZOOM_TAG) !== 0) keep.push(lines[i]);
+    while (keep.length && keep[keep.length - 1] === "") keep.pop();
+    if (base) keep.push(LEO_ZOOM_TAG + base.join(","));
+    try { layer.comment = keep.join("\n"); } catch (e) {}
+}
+
+function _leoScaleProp(layer) {
+    return layer.property("ADBE Transform Group").property("ADBE Scale");
+}
+
+// Easy Ease (F9): Bezier with 0 speed and 33.33% influence, one KeyframeEase per scale dimension.
+function _leoEaseAllKeys(prop) {
+    var dims = 3;
+    try { dims = prop.value.length || 3; } catch (eDims) {}
+    var tries = [dims, 3, 2, 1];
+    for (var k = 1; k <= prop.numKeys; k++) {
+        prop.setInterpolationTypeAtKey(k, KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
+        for (var t = 0; t < tries.length; t++) {
+            var eases = [];
+            for (var d = 0; d < tries[t]; d++) eases.push(new KeyframeEase(0, 33.33));
+            try {
+                prop.setTemporalEaseAtKey(k, eases, eases);
+                break;
+            } catch (eEase) {}
+        }
+    }
+}
+
+function _leoRemoveZoom(layer) {
+    var base = _leoZoomBase(layer);
+    if (!base) return false;
+    while (_leoScaleProp(layer).numKeys > 0) _leoScaleProp(layer).removeKey(_leoScaleProp(layer).numKeys);
+    try { _leoScaleProp(layer).setValue(base); } catch (eBase) {}
+    _leoSetZoomComment(layer, null);
+    return true;
+}
+
+function _leoAddZoom(layer, factor) {
+    _leoRemoveZoom(layer);
+    var scale = _leoScaleProp(layer);
+    if (scale.numKeys > 0 || scale.expressionEnabled) return false;
+    var base = scale.value;
+    var end = [];
+    for (var i = 0; i < base.length; i++) end.push(base[i] * factor);
+    scale.setValueAtTime(layer.inPoint, base);
+    _leoScaleProp(layer).setValueAtTime(layer.outPoint, end);
+    _leoEaseAllKeys(_leoScaleProp(layer));
+    _leoSetZoomComment(layer, base);
+    return true;
+}
+
 // items: [{ text, words: [start times in comp seconds] }] in caption order (from the panel).
-// mode: "fade" (default), "fadeup", or "none" (Regular: removes an earlier LEO Word Fade).
+// mode: "fade" (default), "fadeup", "fadescale", or "none" (Regular: removes an earlier LEO Word Fade).
 function leoApplyWordFade(groupTag, items, fadeSec, mode) {
     var comp = _aeActiveComp();
     if (!comp) return "Error: Open the caption composition first.";
@@ -6509,8 +6610,12 @@ function leoApplyWordFade(groupTag, items, fadeSec, mode) {
             try {
                 if (mode === "none") {
                     _leoRemoveWordFade(lyr);
+                    _leoRemoveZoom(lyr);
                     done++;
                 } else if (_leoAddWordFadeToLayer(lyr, pairs[k].item.words, fade, comp.frameDuration, mode === "fadeup" ? "fadeup" : "fade")) {
+                    // Fade Up + Scale: the words fade like Fade Up Words and the whole caption zooms 100% -> 120%.
+                    if (mode === "fadescale") _leoAddZoom(lyr, 1.2);
+                    else _leoRemoveZoom(lyr);
                     done++;
                 }
             } catch (eLayer) {
@@ -6523,7 +6628,7 @@ function leoApplyWordFade(groupTag, items, fadeSec, mode) {
     }
     if (!done && failed) return "Error: " + failed;
     if (mode === "none") return "Regular captions (no word animation).";
-    return (mode === "fadeup" ? "Rise Up Words" : "Fade Up Words") + " added to " + done + " caption" + (done === 1 ? "" : "s") + ".";
+    return (mode === "fadeup" ? "Rise Up Words" : mode === "fadescale" ? "Fade Up + Scale" : "Fade Up Words") + " added to " + done + " caption" + (done === 1 ? "" : "s") + ".";
 }
 
 
