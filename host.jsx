@@ -6676,3 +6676,634 @@ function leoCollapseCaptionGroup(groupTag) {
     }
     return "Tidied " + collapsed + " caption layer" + (collapsed === 1 ? "" : "s") + ".";
 }
+
+
+// ---- Presets tab: click a preset to apply it to the selected layers, click again to remove it ----
+// AE doesn't record what a preset added, so the text animators / effects it adds are renamed
+// "LEO Preset: <name>"; removing deletes exactly those (the user's own animators/effects stay).
+function _leoPresetTag(presetFile) {
+    return "LEO Preset: " + File.decode(presetFile.name).replace(/\.ffx$/i, "");
+}
+
+function _leoPresetGroups(layer) {
+    var groups = [];
+    try { var a = layer.property("ADBE Text Properties").property("ADBE Text Animators"); if (a) groups.push("animators"); } catch (e1) {}
+    try { var fx = layer.property("ADBE Effect Parade"); if (fx) groups.push("effects"); } catch (e2) {}
+    return groups;
+}
+
+// Re-fetched every time: adding/removing/renaming can invalidate earlier Property objects.
+function _leoPresetGroup(layer, which) {
+    if (which === "animators") return layer.property("ADBE Text Properties").property("ADBE Text Animators");
+    return layer.property("ADBE Effect Parade");
+}
+
+function _leoLayerHasPreset(layer, tag) {
+    var groups = _leoPresetGroups(layer);
+    for (var g = 0; g < groups.length; g++) {
+        var grp = _leoPresetGroup(layer, groups[g]);
+        for (var i = 1; i <= grp.numProperties; i++) if (grp.property(i).name === tag) return true;
+    }
+    return false;
+}
+
+function _leoRemovePresetFromLayer(layer, tag) {
+    var removed = 0;
+    var groups = _leoPresetGroups(layer);
+    for (var g = 0; g < groups.length; g++) {
+        for (var i = _leoPresetGroup(layer, groups[g]).numProperties; i >= 1; i--) {
+            if (_leoPresetGroup(layer, groups[g]).property(i).name === tag) {
+                _leoPresetGroup(layer, groups[g]).property(i).remove();
+                removed++;
+            }
+        }
+    }
+    return removed;
+}
+
+function _leoApplyTrackedPreset(comp, layer, presetFile, tag) {
+    var groups = _leoPresetGroups(layer);
+    var before = {};
+    for (var g = 0; g < groups.length; g++) before[groups[g]] = _leoPresetGroup(layer, groups[g]).numProperties;
+    _applyPresetPathsToLayer(comp, layer, [presetFile.fsName]);
+    var added = 0;
+    groups = _leoPresetGroups(layer); // a preset can create the effects group on a layer that had none
+    for (var h = 0; h < groups.length; h++) {
+        var start = before[groups[h]] || 0;
+        for (var i = start + 1; i <= _leoPresetGroup(layer, groups[h]).numProperties; i++) {
+            try { _leoPresetGroup(layer, groups[h]).property(i).name = tag; } catch (eName) {}
+            added++;
+        }
+    }
+    return added;
+}
+
+// Presets tab badges: preset names that every selected text layer has (clicking one would remove it).
+function leoPresetsOnSelected() {
+    var comp = _aeActiveComp();
+    if (!comp) return "[]";
+    var sel = _getSelectedLayers(comp);
+    var counts = {};
+    var total = 0;
+    for (var i = 0; i < (sel ? sel.length : 0); i++) {
+        var layer = sel[i];
+        try { if (!layer.property("ADBE Text Properties")) continue; } catch (eText) { continue; }
+        total++;
+        var seen = {};
+        var groups = _leoPresetGroups(layer);
+        for (var g = 0; g < groups.length; g++) {
+            var grp = _leoPresetGroup(layer, groups[g]);
+            for (var j = 1; j <= grp.numProperties; j++) {
+                var nm = grp.property(j).name;
+                if (nm.indexOf("LEO Preset: ") === 0) seen[nm.substring(12)] = true;
+            }
+        }
+        for (var k in seen) if (seen.hasOwnProperty(k)) counts[k] = (counts[k] || 0) + 1;
+    }
+    var out = [];
+    for (var n in counts) if (counts.hasOwnProperty(n) && counts[n] === total) out.push("\"" + _escapeJSONValue(n) + "\"");
+    return "[" + out.join(",") + "]";
+}
+
+function leoTogglePresetOnSelected(presetPath) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var file = new File(presetPath);
+    if (!file.exists) return "Error: Preset file not found.";
+    var sel = _getSelectedLayers(comp);
+    var layers = [];
+    for (var i = 0; i < (sel ? sel.length : 0); i++) {
+        try { if (sel[i].property("ADBE Text Properties")) layers.push(sel[i]); } catch (eText) {}
+    }
+    if (!layers.length) return "Error: Select one or more text layers in the timeline first.";
+
+    var tag = _leoPresetTag(file);
+    var name = tag.replace(/^LEO Preset: /, "");
+    var allHave = true;
+    for (var a = 0; a < layers.length; a++) if (!_leoLayerHasPreset(layers[a], tag)) { allHave = false; break; }
+
+    var savedTime = comp.time;
+    var count = 0;
+    var result = "";
+    app.beginUndoGroup(allHave ? "Remove Text Preset" : "Apply Text Preset");
+    try {
+        for (var k = 0; k < layers.length; k++) {
+            var layer = layers[k];
+            var wasLocked = layer.locked;
+            if (wasLocked) layer.locked = false;
+            if (allHave) {
+                if (_leoRemovePresetFromLayer(layer, tag) > 0) count++;
+            } else if (!_leoLayerHasPreset(layer, tag)) {
+                _leoApplyTrackedPreset(comp, layer, file, tag);
+                count++;
+            }
+            if (wasLocked) layer.locked = true;
+        }
+        result = (allHave ? "Removed: " : "Applied: ") + name + " (" + count + " layer" + (count === 1 ? "" : "s") + ")";
+    } catch (e) {
+        result = "Error: " + e.toString();
+    } finally {
+        try { comp.time = savedTime; } catch (eTime) {}
+        for (var s = 0; s < layers.length; s++) { try { layers[s].selected = true; } catch (eSel) {} }
+        app.endUndoGroup();
+    }
+    return result;
+}
+
+
+// ---- Font Presets tab: gradient fill + colored outline, on whole text layers or on chosen characters ----
+// Whole layer: a Gradient Ramp effect named "LEO Font: <style>" that follows the text bounds
+// (sourceRectAtTime), plus a Layer Style stroke - layer styles render after effects, so the outline
+// keeps its own color instead of being painted by the gradient.
+// Chosen characters: a text animator "LEO Font: <style> [start-end]" (fill, stroke color, stroke width)
+// with an Index range selector. AE can't gradient part of a text layer, so characters get one solid color.
+var LEO_FONT_PREFIX = "LEO Font: ";
+
+function _leoJsonStr(value) {
+    var s = "" + (value === null || value === undefined ? "" : value);
+    s = s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return s.replace(/[\u0000-\u001f]/g, function (c) {
+        var h = c.charCodeAt(0).toString(16);
+        return "\\u" + ("0000" + h).substr(h.length);
+    });
+}
+
+function _leoSelectedTextLayers(comp) {
+    var sel = _getSelectedLayers(comp);
+    var out = [];
+    for (var i = 0; i < (sel ? sel.length : 0); i++) {
+        try { if (sel[i].property("ADBE Text Properties")) out.push(sel[i]); } catch (e) {}
+    }
+    return out;
+}
+
+function _leoFontColor(hex) {
+    var h = String(hex).replace(/^#/, "");
+    return [parseInt(h.substr(0, 2), 16) / 255, parseInt(h.substr(2, 2), 16) / 255, parseInt(h.substr(4, 2), 16) / 255, 1];
+}
+
+function _leoFontSize(layer) {
+    try { return Number(layer.property("ADBE Text Properties").property("ADBE Text Document").value.fontSize) || 60; } catch (e) { return 60; }
+}
+
+// Re-fetched every time: adding/removing properties invalidates earlier references.
+function _leoFontEffects(layer) { return layer.property("ADBE Effect Parade"); }
+function _leoFontAnimators(layer) { return layer.property("ADBE Text Properties").property("ADBE Text Animators"); }
+
+function _leoFontWholeStyle(layer) {
+    var fx = _leoFontEffects(layer);
+    for (var i = 1; i <= fx.numProperties; i++) {
+        var n = fx.property(i).name;
+        if (n.indexOf(LEO_FONT_PREFIX) === 0) return n.substring(LEO_FONT_PREFIX.length);
+    }
+    return "";
+}
+
+function _leoFontRanges(layer) {
+    var out = [];
+    var an = _leoFontAnimators(layer);
+    for (var i = 1; i <= an.numProperties; i++) {
+        var m = /^LEO Font: (.*) \[(\d+)-(\d+)\]$/.exec(an.property(i).name);
+        if (m) out.push({ name: m[1], start: Number(m[2]), end: Number(m[3]), index: i });
+    }
+    return out;
+}
+
+function _leoRemoveFontRanges(layer, test) {
+    var ranges = _leoFontRanges(layer);
+    var removed = 0;
+    for (var i = ranges.length - 1; i >= 0; i--) {
+        if (test(ranges[i])) {
+            _leoFontAnimators(layer).property(ranges[i].index).remove();
+            removed++;
+        }
+    }
+    return removed;
+}
+
+function _leoLayerStrokeStyle(layer) {
+    try { return layer.property("ADBE Layer Styles").property("frameFX/enabled") || null; } catch (e) { return null; }
+}
+
+function _leoRemoveFontWhole(layer) {
+    var removed = false;
+    for (var i = _leoFontEffects(layer).numProperties; i >= 1; i--) {
+        if (_leoFontEffects(layer).property(i).name.indexOf(LEO_FONT_PREFIX) === 0) {
+            _leoFontEffects(layer).property(i).remove();
+            removed = true;
+        }
+    }
+    if (removed && _leoLayerStrokeStyle(layer)) {
+        // The outline was added together with the gradient.
+        try { _leoLayerStrokeStyle(layer).remove(); } catch (eRemove) {
+            try { _leoLayerStrokeStyle(layer).enabled = false; } catch (eOff) {}
+        }
+    }
+    return removed;
+}
+
+function _leoAddFontGradient(layer, style) {
+    var tag = LEO_FONT_PREFIX + style.name;
+    _leoFontEffects(layer).addProperty("ADBE Ramp");
+    var index = _leoFontEffects(layer).numProperties;
+    function ramp() { return _leoFontEffects(layer).property(index); }
+    ramp().name = tag;
+    // Top-to-bottom across the text itself, and it keeps fitting when the words change.
+    ramp().property("ADBE Ramp-0001").expression = "var r = sourceRectAtTime(time, false); [r.left + r.width / 2, r.top];";
+    ramp().property("ADBE Ramp-0002").setValue(_leoFontColor(style.top));
+    ramp().property("ADBE Ramp-0003").expression = "var r = sourceRectAtTime(time, false); [r.left + r.width / 2, r.top + r.height];";
+    ramp().property("ADBE Ramp-0004").setValue(_leoFontColor(style.bottom));
+    try { ramp().property("ADBE Ramp-0005").setValue(1); } catch (eShape) {} // Linear
+}
+
+// Layer > Layer Styles > Stroke has no scripting API, so run the menu command on this layer alone.
+function _leoAddLayerStroke(comp, layer, color, size) {
+    var prev = [];
+    var sel = comp.selectedLayers;
+    for (var i = 0; i < sel.length; i++) prev.push(sel[i]);
+    try {
+        for (var j = 0; j < prev.length; j++) prev[j].selected = false;
+        layer.selected = true;
+        var id = app.findMenuCommandId("Stroke");
+        if (!id) return false;
+        var fxBefore = _leoFontEffects(layer).numProperties;
+        app.executeCommand(id);
+        // If the command ever resolves to an effect instead of the layer style, take it back off.
+        for (var k = _leoFontEffects(layer).numProperties; k > fxBefore; k--) _leoFontEffects(layer).property(k).remove();
+        if (!_leoLayerStrokeStyle(layer)) return false;
+        try { if (!_leoLayerStrokeStyle(layer).enabled) _leoLayerStrokeStyle(layer).enabled = true; } catch (eOn) {}
+        _leoLayerStrokeStyle(layer).property("frameFX/color").setValue(color);
+        _leoLayerStrokeStyle(layer).property("frameFX/size").setValue(size);
+        try { _leoLayerStrokeStyle(layer).property("frameFX/style").setValue(1); } catch (ePos) {} // Position: Outside
+        try { _leoLayerStrokeStyle(layer).property("frameFX/opacity").setValue(100); } catch (eOp) {}
+        return true;
+    } catch (e) {
+        return false;
+    } finally {
+        try { layer.selected = false; } catch (eDesel) {}
+        for (var r = 0; r < prev.length; r++) { try { prev[r].selected = true; } catch (eSel) {} }
+    }
+}
+
+function _leoAddFontRange(layer, style, start, end) {
+    var size = _leoFontSize(layer);
+    var width = Math.max(2, Math.round(size * 0.1)); // fill sits over the stroke, so half of it shows
+    // An animator's stroke only draws on text that has a stroke: switch on a 0 px one if there is none.
+    try {
+        var docProp = layer.property("ADBE Text Properties").property("ADBE Text Document");
+        var td = docProp.value;
+        if (!td.applyStroke) {
+            td.applyStroke = true;
+            td.strokeWidth = 0;
+            td.strokeOverFill = false;
+            docProp.setValue(td);
+        } else if (td.strokeOverFill) {
+            width = Math.max(1, Math.round(size * 0.05));
+        }
+    } catch (eStroke) {}
+
+    _leoFontAnimators(layer).addProperty("ADBE Text Animator");
+    var index = _leoFontAnimators(layer).numProperties;
+    function anim() { return _leoFontAnimators(layer).property(index); }
+    function props() { return anim().property("ADBE Text Animator Properties"); }
+    anim().name = LEO_FONT_PREFIX + style.name + " [" + start + "-" + end + "]";
+    props().addProperty("ADBE Text Fill Color");
+    props().property("ADBE Text Fill Color").setValue(_leoFontColor(style.fill));
+    props().addProperty("ADBE Text Stroke Color");
+    props().property("ADBE Text Stroke Color").setValue(_leoFontColor(style.stroke));
+    props().addProperty("ADBE Text Stroke Width");
+    props().property("ADBE Text Stroke Width").setValue(width);
+    anim().property("ADBE Text Selectors").addProperty("ADBE Text Selector");
+    function sel() { return anim().property("ADBE Text Selectors").property(1); }
+    sel().property("ADBE Text Range Advanced").property("ADBE Text Range Units").setValue(2); // Index
+    var basedOn = _leoFindChild(sel().property("ADBE Text Range Advanced"), ["ADBE Text Range Type2", "ADBE Text Range Type"], ["Based On"]);
+    if (basedOn) basedOn.setValue(1); // Characters
+    sel().property("ADBE Text Index Start").setValue(start);
+    sel().property("ADBE Text Index End").setValue(end);
+}
+
+// Panel info: the first selected text layer's text and which LEO font styles it has.
+function leoFontTargetInfo() {
+    var comp = _aeActiveComp();
+    if (!comp) return "{\"count\":0}";
+    var layers = _leoSelectedTextLayers(comp);
+    if (!layers.length) return "{\"count\":0}";
+    var layer = layers[0];
+    var text = layer.property("ADBE Text Properties").property("ADBE Text Document").value.text;
+    var ranges = _leoFontRanges(layer);
+    var rs = [];
+    for (var i = 0; i < ranges.length; i++) {
+        rs.push("{\"name\":\"" + _leoJsonStr(ranges[i].name) + "\",\"start\":" + ranges[i].start + ",\"end\":" + ranges[i].end + "}");
+    }
+    return "{\"count\":" + layers.length + ",\"layer\":\"" + _leoJsonStr(layer.name) + "\",\"text\":\"" + _leoJsonStr(text)
+        + "\",\"whole\":\"" + _leoJsonStr(_leoFontWholeStyle(layer)) + "\",\"ranges\":[" + rs.join(",") + "]}";
+}
+
+// style = { name, top, bottom, fill, stroke } ("#RRGGBB"). start/end = character range, or -1 for whole layers.
+// Clicking the same style on the same target again removes it.
+function leoApplyFontStyle(style, start, end) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var layers = _leoSelectedTextLayers(comp);
+    if (!layers.length) return "Error: Select a text layer in the timeline first.";
+    var partial = start >= 0 && end > start;
+    var result = "";
+    var locked = [];
+    app.beginUndoGroup("LEO Font Preset");
+    try {
+        for (var u = 0; u < layers.length; u++) {
+            if (layers[u].locked) { layers[u].locked = false; locked.push(layers[u]); }
+        }
+        if (partial) {
+            var layer = layers[0];
+            var text = String(layer.property("ADBE Text Properties").property("ADBE Text Document").value.text);
+            start = Math.max(0, Math.min(start, text.length));
+            end = Math.max(start, Math.min(end, text.length));
+            if (end <= start) return "Error: The highlighted words are no longer in this layer. Highlight them again.";
+            var snippet = text.substring(start, end).replace(/[\r\n\u0003]+/g, " ");
+            if (snippet.length > 28) snippet = snippet.substring(0, 27) + "...";
+            var same = false;
+            var ranges = _leoFontRanges(layer);
+            for (var s = 0; s < ranges.length; s++) {
+                if (ranges[s].name === style.name && ranges[s].start === start && ranges[s].end === end) same = true;
+            }
+            // A new style replaces whatever LEO style already covers these characters.
+            _leoRemoveFontRanges(layer, function (r) { return r.start < end && r.end > start; });
+            if (same) {
+                result = "Removed: " + style.name + " from \"" + snippet + "\"";
+            } else {
+                // A whole-layer gradient paints over everything, so it has to go for the highlight to show.
+                var hadWhole = _leoRemoveFontWhole(layer);
+                _leoAddFontRange(layer, style, start, end);
+                result = "Applied: " + style.name + " to \"" + snippet + "\"" + (hadWhole ? " (whole-layer gradient removed so it shows)" : "");
+            }
+        } else {
+            var allHave = true;
+            for (var a = 0; a < layers.length; a++) if (_leoFontWholeStyle(layers[a]) !== style.name) { allHave = false; break; }
+            var count = 0;
+            var noOutline = 0;
+            for (var k = 0; k < layers.length; k++) {
+                var l = layers[k];
+                if (allHave) {
+                    if (_leoRemoveFontWhole(l)) count++;
+                    continue;
+                }
+                _leoRemoveFontWhole(l);
+                _leoRemoveFontRanges(l, function () { return true; }); // would be hidden under the gradient
+                _leoAddFontGradient(l, style);
+                var outline = Math.max(1, Math.round(_leoFontSize(l) * 0.05));
+                if (!_leoAddLayerStroke(comp, l, _leoFontColor(style.stroke), outline)) noOutline++;
+                count++;
+            }
+            result = (allHave ? "Removed: " : "Applied: ") + style.name + " (" + count + " layer" + (count === 1 ? "" : "s") + ")"
+                + (noOutline ? " - the outline could not be added" : "");
+        }
+    } catch (e) {
+        result = "Error: " + e.toString();
+    } finally {
+        for (var q = 0; q < locked.length; q++) { try { locked[q].locked = true; } catch (eLock) {} }
+        for (var r2 = 0; r2 < layers.length; r2++) { try { layers[r2].selected = true; } catch (eSel) {} }
+        app.endUndoGroup();
+    }
+    return result;
+}
+
+function leoClearFontStyles() {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var layers = _leoSelectedTextLayers(comp);
+    if (!layers.length) return "Error: Select a text layer in the timeline first.";
+    var count = 0;
+    app.beginUndoGroup("Clear LEO Font Presets");
+    try {
+        for (var i = 0; i < layers.length; i++) {
+            var wasLocked = layers[i].locked;
+            if (wasLocked) layers[i].locked = false;
+            var whole = _leoRemoveFontWhole(layers[i]);
+            var parts = _leoRemoveFontRanges(layers[i], function () { return true; });
+            if (whole || parts) count++;
+            if (wasLocked) layers[i].locked = true;
+        }
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+    return count ? "Cleared font styles from " + count + " layer" + (count === 1 ? "" : "s") + "." : "No LEO font styles on the selected layers.";
+}
+
+
+// ---- Animations tab: .ffx library in <extension>/animations/<Section>/ (each folder is a section) ----
+// Captured while host.jsx loads: during evalScript calls $.fileName no longer points at this file.
+var LEO_HOST_FOLDER = (function () {
+    try { return File($.fileName).parent.fsName; } catch (e) { return ""; }
+})();
+var LEO_ANIM_SECTIONS = ["CC", "Transitions", "Shakes", "Twixtor", "Blur", "Glow & Light", "Text", "Text Templates", "Effects", "Audio"];
+
+function _leoAnimRoot(extensionRoot) {
+    var candidates = [extensionRoot, LEO_HOST_FOLDER];
+    for (var i = 0; i < candidates.length; i++) {
+        if (!candidates[i]) continue;
+        try {
+            var f = new Folder(candidates[i] + "/animations");
+            if (f.exists) return f;
+        } catch (e) {}
+    }
+    return null;
+}
+
+function _leoAnimSectionRank(name) {
+    for (var i = 0; i < LEO_ANIM_SECTIONS.length; i++) if (LEO_ANIM_SECTIONS[i].toLowerCase() === name.toLowerCase()) return i;
+    return LEO_ANIM_SECTIONS.length;
+}
+
+// [{n: name, p: path, g: section}] - known sections first in LEO_ANIM_SECTIONS order, new folders after (A-Z).
+function leoListAnimations(extensionRoot) {
+    var root = _leoAnimRoot(extensionRoot);
+    if (!root) return "Error: The animations folder is missing from the LEO extension folder.";
+    var dirs = root.getFiles(function (f) { return f instanceof Folder; });
+    var sections = [];
+    for (var i = 0; i < dirs.length; i++) sections.push({ folder: dirs[i], name: File.decode(dirs[i].name) });
+    sections.sort(function (a, b) {
+        var ra = _leoAnimSectionRank(a.name), rb = _leoAnimSectionRank(b.name);
+        if (ra !== rb) return ra - rb;
+        return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1;
+    });
+    var out = [];
+    for (var s = 0; s < sections.length; s++) {
+        var files = sections[s].folder.getFiles("*.ffx");
+        var items = [];
+        for (var j = 0; j < files.length; j++) {
+            if (files[j] instanceof File) items.push({ n: File.decode(files[j].name).replace(/\.ffx$/i, ""), p: files[j].fsName });
+        }
+        // Template packs: an .aep plus "<pack>.templates.txt" naming the animations inside it.
+        var packs = sections[s].folder.getFiles("*.aep");
+        for (var a = 0; a < packs.length; a++) {
+            if (!(packs[a] instanceof File)) continue;
+            var list = _leoTemplateList(packs[a]);
+            for (var t = 0; t < list.items.length; t++) {
+                items.push({ n: list.items[t].name, p: packs[a].fsName, c: list.comp, i: list.items[t].index });
+            }
+        }
+        items.sort(function (a, b) { return a.n.toLowerCase() < b.n.toLowerCase() ? -1 : a.n.toLowerCase() > b.n.toLowerCase() ? 1 : 0; });
+        for (var k = 0; k < items.length; k++) {
+            out.push("{\"n\":\"" + _leoJsonStr(items[k].n) + "\",\"p\":\"" + _leoJsonStr(items[k].p) + "\",\"g\":\"" + _leoJsonStr(sections[s].name) + "\""
+                + (items[k].c ? ",\"c\":\"" + _leoJsonStr(items[k].c) + "\",\"i\":" + items[k].i : "") + "}");
+        }
+    }
+    return "[" + out.join(",") + "]";
+}
+
+// Applies at the playhead (like double-clicking a preset in AE) to each selected layer; one undo step.
+function leoApplyAnimation(presetPath) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var file = new File(presetPath);
+    if (!file.exists) return "Error: Preset file not found. Click Reload in the Animations tab.";
+    var sel = _getSelectedLayers(comp);
+    var layers = [];
+    for (var i = 0; i < (sel ? sel.length : 0); i++) layers.push(sel[i]);
+    if (!layers.length) return "Error: Select the layer (or adjustment layer) to animate first.";
+    var name = File.decode(file.name).replace(/\.ffx$/i, "");
+    var t = comp.time;
+    var done = 0;
+    var failed = [];
+    app.beginUndoGroup("LEO Animation: " + name);
+    try {
+        for (var k = 0; k < layers.length; k++) {
+            var layer = layers[k];
+            var wasLocked = layer.locked;
+            try {
+                if (wasLocked) layer.locked = false;
+                // applyPreset works on every selected layer, so select just this one.
+                _deselectAll(comp);
+                layer.selected = true;
+                comp.time = t;
+                layer.applyPreset(file);
+                done++;
+            } catch (e) {
+                failed.push(layer.name + ": " + e.toString());
+            } finally {
+                try { if (wasLocked) layer.locked = true; } catch (eLock) {}
+            }
+        }
+    } finally {
+        try { comp.time = t; } catch (eTime) {}
+        _deselectAll(comp);
+        for (var s = 0; s < layers.length; s++) { try { layers[s].selected = true; } catch (eSel) {} }
+        app.endUndoGroup();
+    }
+    if (!done) return "Error: " + (failed.length ? failed[0] : "Could not apply " + name + ".");
+    return "Applied: " + name + " (" + done + " layer" + (done === 1 ? "" : "s") + ")" + (failed.length ? " - failed on " + failed.length : "");
+}
+
+// "<pack>.templates.txt":  "comp: <showcase comp>"  then  "<n>: <name>"  (n = nth layer of that comp, in time order).
+function _leoTemplateList(aepFile) {
+    var result = { comp: "", items: [] };
+    var txt = new File(aepFile.fsName.replace(/\.aep$/i, "") + ".templates.txt");
+    if (!txt.exists) return result;
+    txt.encoding = "UTF-8";
+    if (!txt.open("r")) return result;
+    try {
+        while (!txt.eof) {
+            var line = txt.readln().replace(/^\s+|\s+$/g, "");
+            if (!line || line.charAt(0) === "#") continue;
+            var m = /^comp\s*:\s*(.+)$/i.exec(line);
+            if (m) { result.comp = m[1]; continue; }
+            m = /^(\d+)\s*:\s*(.+)$/.exec(line);
+            if (m) result.items.push({ index: Number(m[1]), name: m[2] });
+        }
+    } finally {
+        txt.close();
+    }
+    if (!result.comp) result.items = [];
+    return result;
+}
+
+function _leoFolderChild(folder, name, type) {
+    var n = folder ? folder.numItems : app.project.numItems;
+    for (var i = 1; i <= n; i++) {
+        var it = folder ? folder.item(i) : app.project.item(i);
+        if (it.name === name && it instanceof type && (folder || it.parentFolder === app.project.rootFolder)) return it;
+    }
+    return null;
+}
+
+function _leoFindComp(folder, name) {
+    for (var i = 1; i <= folder.numItems; i++) {
+        var it = folder.item(i);
+        if (it instanceof CompItem && it.name === name) return it;
+        if (it instanceof FolderItem) {
+            var inner = _leoFindComp(it, name);
+            if (inner) return inner;
+        }
+    }
+    return null;
+}
+
+// Drops the nth animation of a template pack into the active comp at the playhead, effects (glow) included.
+// The pack is imported once into "LEO Templates"; each drop gets its own copy of the inner comp so its words
+// can be changed without touching other drops.
+function leoApplyTemplate(packPath, showcaseName, index, name) {
+    var comp = _aeActiveComp();
+    if (!comp) return "Error: Open a composition first.";
+    var file = new File(packPath);
+    if (!file.exists) return "Error: Template pack not found. Click Reload in the Animations tab.";
+    var packName = File.decode(file.name).replace(/\.aep$/i, "");
+    var t = comp.time;
+    app.beginUndoGroup("LEO Template: " + name);
+    try {
+        var holder = _leoFolderChild(null, "LEO Templates", FolderItem);
+        var pack = holder ? _leoFolderChild(holder, packName, FolderItem) : null;
+        if (!pack || !_leoFindComp(pack, showcaseName)) {
+            var rqBefore = app.project.renderQueue.numItems;
+            app.beginSuppressDialogs(); // e.g. "Project has missing fonts"
+            try {
+                pack = app.project.importFile(new ImportOptions(file));
+            } finally {
+                app.endSuppressDialogs(false);
+            }
+            // The pack's own render-queue entries don't belong in the user's queue.
+            for (var r = app.project.renderQueue.numItems; r > rqBefore; r--) {
+                try { app.project.renderQueue.item(r).remove(); } catch (eRq) {}
+            }
+            if (!holder) holder = app.project.items.addFolder("LEO Templates");
+            pack.name = packName;
+            pack.parentFolder = holder;
+        }
+        var showcase = _leoFindComp(pack, showcaseName);
+        if (!showcase) return "Error: \"" + showcaseName + "\" is missing from " + packName + ".";
+        var layers = [];
+        for (var i = 1; i <= showcase.numLayers; i++) layers.push(showcase.layer(i));
+        layers.sort(function (a, b) { return a.inPoint - b.inPoint; });
+        var src = layers[index - 1];
+        if (!src) return "Error: " + packName + " has no animation " + index + ".";
+
+        var before = comp.numLayers;
+        src.copyToComp(comp);
+        if (comp.numLayers !== before + 1) return "Error: Could not copy the animation into this comp.";
+        var layer = comp.layer(1);
+        if (layer.source instanceof CompItem) {
+            var own = layer.source.duplicate();
+            own.name = name + " (edit words here)";
+            layer.replaceSource(own, false);
+        }
+        layer.startTime += t - layer.inPoint; // shift, don't set inPoint
+        layer.name = name;
+        _deselectAll(comp);
+        layer.selected = true;
+        comp.time = t;
+        return "Added: " + name + ". Double-click it to change the words.";
+    } catch (e) {
+        return "Error: " + e.toString();
+    } finally {
+        app.endUndoGroup();
+    }
+}
+
+function leoOpenAnimationsFolder(extensionRoot) {
+    var root = _leoAnimRoot(extensionRoot);
+    if (!root) return "Error: The animations folder is missing from the LEO extension folder.";
+    root.execute();
+    return "Opened " + root.fsName;
+}
