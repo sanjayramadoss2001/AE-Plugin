@@ -69034,7 +69034,10 @@ var kK = Object[_0x332234(0xf4f)],
       _0x4c7c86["useEffect"](() => {
         var _0x1bb6cf = _0x509683;
         const _0x263763 = _0x310353[_0x1bb6cf(0x79f)]();
-        if (!_0x263763) {
+        // Captions run offline now: don't re-check an old ElevenLabs key every time the tab opens
+        // (it made 3-4 network requests per open and slowed the Captions tab down).
+        const _leoOfflineCaps = window.LeoOfflineCaptions && window.LeoOfflineCaptions.getStatus().supported;
+        if (!_0x263763 || _leoOfflineCaps) {
           (_0x2797f0(null), _0x299480(null), _0x3ff6bf(!0x1));
           return;
         }
@@ -76300,6 +76303,9 @@ var kK = Object[_0x332234(0xf4f)],
       currentUiScale: _0x32aeaa,
       onUiScaleChange: _0x4e9a7e,
       onCustomizeLayout: _0x4d0177,
+      leoTabs: _leoTabsList,
+      leoHiddenTabs: _leoHiddenList,
+      onLeoToggleTab: _leoOnToggleTab,
     }) => {
       var _0x1e0b62 = _0xd83adf;
       const [_0x59f327, _0x3288df] = _0x4c7c86["useState"](_0x1e0b62(0xc69)),
@@ -76601,6 +76607,11 @@ var kK = Object[_0x332234(0xf4f)],
                             }),
                             "Customize\x20Layout",
                           ],
+                        }),
+                        _0xf553ed["jsx"](_leoTabVisibility, {
+                          tabs: _leoTabsList,
+                          hidden: _leoHiddenList,
+                          onToggle: _leoOnToggleTab,
                         }),
                       ],
                     }),
@@ -81592,6 +81603,8 @@ var kK = Object[_0x332234(0xf4f)],
       "layers",
       _0xd83adf(0x11d5),
       "presets",
+      "fonts",
+      "animations",
       "templates",
       "beats",
       _0xd83adf(0x52d),
@@ -81599,6 +81612,60 @@ var kK = Object[_0x332234(0xf4f)],
       "audio",
     ],
     _0x5bcfe4 = "dripz-tab-order";
+  // Settings > Layout > Show tabs: ids of the main tabs the user hid. At least one tab always stays visible.
+  const _leoHiddenTabsKey = "leo-hidden-tabs";
+  function _leoReadHiddenTabs() {
+    try {
+      const v = JSON.parse(localStorage.getItem(_leoHiddenTabsKey) || "[]");
+      const hidden = Array.isArray(v) ? v.filter((t) => _0x16a70a.indexOf(t) !== -1) : [];
+      return hidden.length < _0x16a70a.length ? hidden : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function _leoTabVisibility(props) {
+    const J = _0xf553ed;
+    const tabs = props.tabs || [];
+    const hidden = props.hidden || [];
+    if (!tabs.length || !props.onToggle) return null;
+    return J["jsxs"]("div", {
+      className: "mt-3 rounded-lg border border-border/70 bg-card/65 p-2.5",
+      children: [
+        J["jsx"]("h3", {
+          className: "text-[10px] font-mono font-semibold uppercase tracking-[0.16em] text-foreground",
+          children: "Show tabs",
+        }),
+        J["jsx"]("p", {
+          className: "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85",
+          children: "Untick a tab to hide it. Tick it again to bring it back.",
+        }),
+        J["jsx"]("div", {
+          className: "mt-2 grid grid-cols-2 gap-1.5",
+          children: tabs.map((t) => {
+            const on = hidden.indexOf(t.id) === -1;
+            return J["jsxs"](
+              "label",
+              {
+                className:
+                  "flex items-center gap-2 rounded-md border px-2 py-1.5 text-[10px] font-mono cursor-pointer " +
+                  (on ? "border-primary/30 bg-primary/10 text-foreground" : "border-border/60 text-muted-foreground"),
+                children: [
+                  J["jsx"]("input", {
+                    type: "checkbox",
+                    checked: on,
+                    onChange: () => props.onToggle(t.id),
+                    style: { accentColor: "hsl(var(--primary))", cursor: "pointer" },
+                  }),
+                  t.label,
+                ],
+              },
+              t.id,
+            );
+          }),
+        }),
+      ],
+    });
+  }
   // Exact speech timing (Caption Setup toggle, default on): captions follow the words, one at a time.
   function _leoExactTiming() {
     try {
@@ -82145,6 +82212,7 @@ var kK = Object[_0x332234(0xf4f)],
     const [category, setCategory] = R["useState"]("Animate In");
     const [picked, setPicked] = R["useState"](null);
     const [busy, setBusy] = R["useState"](false);
+    const [applied, setApplied] = R["useState"]({});
     const [status, setStatus] = R["useState"](() => (caps ? caps.getStatus() : null));
     R["useEffect"](() => (caps ? caps.subscribe(setStatus) : undefined), []);
     const load = async (force) => {
@@ -82174,17 +82242,35 @@ var kK = Object[_0x332234(0xf4f)],
     const q = query.trim().toLowerCase();
     const shown = all.filter((p) => (q ? p.n.toLowerCase().indexOf(q) !== -1 : category === "All" || p.g === category));
     const capPreset = status && status.captionPreset;
-    const run = async (label, script) => {
+    // Host tags what a preset adds as "LEO Preset: <file name>"; badges show the ones every selected layer has.
+    const presetKey = (path) => String(path).split(/[\\/]/).pop().replace(/\.ffx$/i, "");
+    const refreshApplied = async () => {
+      try {
+        const res = String((await _0xc1c86d("leoPresetsOnSelected()")) || "");
+        if (res.charAt(0) !== "[") return;
+        const map = {};
+        JSON.parse(res).forEach((n) => (map[n] = true));
+        setApplied(map);
+      } catch (e) {}
+    };
+    R["useEffect"](() => {
+      refreshApplied();
+    }, []);
+    // Click a preset: apply it to the selected text layers; click it again: remove it.
+    const toggle = async (p) => {
+      if (busy) return;
+      setPicked(p);
       setBusy(true);
       try {
-        const res = String((await _0xc1c86d(script)) || "");
+        const res = String((await _0xc1c86d("leoTogglePresetOnSelected(" + JSON.stringify(p.p) + ")")) || "");
         if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Presets tab.");
         if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
-        _0x43c87d["success"](res || label);
+        _0x43c87d["success"](res);
       } catch (e) {
-        _0x43c87d["error"](label + " failed", { description: e && e.message ? e.message : String(e) });
+        _0x43c87d["error"](p.n, { description: e && e.message ? e.message : String(e) });
       } finally {
         setBusy(false);
+        refreshApplied();
       }
     };
     const chip = (name) =>
@@ -82211,6 +82297,7 @@ var kK = Object[_0x332234(0xf4f)],
       );
     return J["jsxs"]("div", {
       className: "space-y-2",
+      onMouseEnter: () => refreshApplied(),
       children: [
         J["jsxs"]("div", {
           className: hint,
@@ -82218,7 +82305,7 @@ var kK = Object[_0x332234(0xf4f)],
           children: [
             capPreset
               ? "Captions use: " + capPreset.name + ". "
-              : "Pick a preset, then apply it to selected text layers or use it for every caption. ",
+              : "Select text layers in After Effects, then click a preset to apply it. Click it again to remove it. ",
             capPreset &&
               J["jsx"]("button", {
                 type: "button",
@@ -82257,8 +82344,9 @@ var kK = Object[_0x332234(0xf4f)],
                 "button",
                 {
                   type: "button",
-                  onClick: () => setPicked(p),
-                  title: p.p,
+                  onClick: () => toggle(p),
+                  disabled: busy,
+                  title: applied[presetKey(p.p)] ? "Applied to the selected layers. Click to remove it." : "Click to apply to the selected text layers",
                   className: active
                     ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
                     : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
@@ -82270,7 +82358,11 @@ var kK = Object[_0x332234(0xf4f)],
                     }),
                     J["jsx"]("div", {
                       className: hint,
-                      children: isCaption ? "Used for captions" : p.g,
+                      children: applied[presetKey(p.p)]
+                        ? "\u2713 Applied \u00b7 click to remove"
+                        : isCaption
+                          ? "Used for captions"
+                          : p.g,
                     }),
                   ],
                 },
@@ -82281,16 +82373,8 @@ var kK = Object[_0x332234(0xf4f)],
         }),
         picked &&
           J["jsxs"]("div", {
-            className: "grid grid-cols-2 gap-2",
+            className: "grid grid-cols-1 gap-2",
             children: [
-              J["jsx"](_0x14db90, {
-                variant: "secondary",
-                disabled: busy,
-                onClick: () => run("Apply preset", "leoApplyPresetToSelected(" + JSON.stringify(picked.p) + ")"),
-                className:
-                  "h-9 text-[10px] font-mono border border-cyan-300/20 bg-cyan-400/8 hover:border-cyan-300/35 hover:bg-cyan-400/12",
-                children: "Apply to selected layers",
-              }),
               J["jsx"](_0x14db90, {
                 disabled: busy || !caps,
                 onClick: () => {
@@ -82301,7 +82385,8 @@ var kK = Object[_0x332234(0xf4f)],
                 },
                 className:
                   "group relative h-9 w-full overflow-hidden rounded-xl text-[10px] font-mono gap-1.5 text-primary-foreground bg-[linear-gradient(90deg,hsl(155_70%_48%),hsl(var(--primary)),hsl(190_90%_60%))]",
-                children: capPreset && capPreset.path === picked.p ? "✓ Used for captions" : "Use for captions",
+                children:
+                  capPreset && capPreset.path === picked.p ? "\u2713 " + picked.n + " is used for captions" : "Use " + picked.n + " for all captions",
               }),
             ],
           }),
@@ -82311,6 +82396,396 @@ var kK = Object[_0x332234(0xf4f)],
           className: hint,
           style: { textDecoration: "underline", cursor: "pointer" },
           children: "Reload presets",
+        }),
+      ],
+    });
+  }
+  // Font Presets tab: gradient fill + colored outline (no glow/shadow) on the selected text layer, or only on
+  // words highlighted in the panel's copy of the layer text (AE doesn't let scripts read the Type tool selection).
+  const _leoIconFonts = _0x356675("LeoPalette", [
+    ["path", { d: "M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z", key: "leo-pa-a" }],
+    ["circle", { cx: "13.5", cy: "6.5", r: ".5", fill: "currentColor", key: "leo-pa-b" }],
+    ["circle", { cx: "17.5", cy: "10.5", r: ".5", fill: "currentColor", key: "leo-pa-c" }],
+    ["circle", { cx: "6.5", cy: "12.5", r: ".5", fill: "currentColor", key: "leo-pa-d" }],
+    ["circle", { cx: "8.5", cy: "7.5", r: ".5", fill: "currentColor", key: "leo-pa-e" }],
+  ]);
+  const _leoFontStyles = [
+    { name: "Toxic Lime", top: "#F2FF5C", bottom: "#3BD62C", stroke: "#0B5E14" },
+    { name: "Fire", top: "#FFB347", bottom: "#F2291B", stroke: "#7A0A05" },
+    { name: "Aura", top: "#FFFFFF", bottom: "#36E2FF", stroke: "#0A6FD1" },
+    { name: "Gold", top: "#FFF9C4", bottom: "#FFD60A", stroke: "#A86B00" },
+    { name: "Neon Green", top: "#7CFF6B", bottom: "#19D42E", stroke: "#075C12" },
+    { name: "Clean White", top: "#FFFFFF", bottom: "#DADDE2", stroke: "#111418" },
+    { name: "Ice", top: "#FFFFFF", bottom: "#E3F8FF", stroke: "#12B8F0" },
+    { name: "Sunset", top: "#FFE45C", bottom: "#FF8A00", stroke: "#B23A00" },
+    { name: "Bubblegum", top: "#FFD1F5", bottom: "#FF4FD8", stroke: "#9C0F8A" },
+    { name: "Electric Blue", top: "#A6F4FF", bottom: "#1FA8FF", stroke: "#0B3F99" },
+    { name: "Royal Purple", top: "#E5C8FF", bottom: "#9B45FF", stroke: "#43107E" },
+    { name: "Blood Red", top: "#FF6B6B", bottom: "#B30000", stroke: "#3D0000" },
+  ];
+  // Highlighted words get one solid color (AE can't gradient part of a text layer): the gradient's middle.
+  function _leoMixHex(a, b) {
+    const part = (hex, i) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+    let out = "#";
+    for (let i = 0; i < 3; i++) out += ("0" + Math.round((part(a, i) + part(b, i)) / 2).toString(16)).slice(-2);
+    return out.toUpperCase();
+  }
+  function _leoFontPresetsPanel() {
+    const J = _0xf553ed;
+    const R = _0x4c7c86;
+    const [info, setInfo] = R["useState"](null);
+    const [range, setRange] = R["useState"](null);
+    const [busy, setBusy] = R["useState"](false);
+    const infoRef = R["useRef"](null);
+    const boxRef = R["useRef"](null);
+    const refresh = async () => {
+      try {
+        const res = String((await _0xc1c86d("leoFontTargetInfo()")) || "");
+        if (res.charAt(0) !== "{") {
+          if (/^EvalScript error/i.test(res)) setInfo({ count: 0, needsRestart: true });
+          return;
+        }
+        const next = JSON.parse(res);
+        const cur = infoRef.current;
+        // A highlight only means something for the same layer and the same words.
+        if (!cur || cur.layer !== next.layer || cur.text !== next.text || next.count !== 1) setRange(null);
+        infoRef.current = next;
+        setInfo(next);
+      } catch (e) {}
+    };
+    R["useEffect"](() => {
+      refresh();
+    }, []);
+    // AE line breaks are single characters, so indexes still match the layer's characters.
+    const shownText = info && info.text ? String(info.text).replace(/[\r\u0003]/g, "\n") : "";
+    const readSelection = (e) => {
+      const el = e.target;
+      setRange(el.selectionEnd > el.selectionStart ? { start: el.selectionStart, end: el.selectionEnd } : null);
+    };
+    const wholeLayer = () => {
+      setRange(null);
+      try {
+        if (boxRef.current) boxRef.current.setSelectionRange(0, 0);
+      } catch (e) {}
+    };
+    const useRange = !!(range && info && info.count === 1);
+    const run = async (label, script) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        const res = String((await _0xc1c86d(script)) || "");
+        if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Font Presets tab.");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+        _0x43c87d["success"](res);
+      } catch (e) {
+        _0x43c87d["error"](label, { description: e && e.message ? e.message : String(e) });
+      } finally {
+        setBusy(false);
+        refresh();
+      }
+    };
+    const apply = (st) => {
+      const payload = { name: st.name, top: st.top, bottom: st.bottom, fill: _leoMixHex(st.top, st.bottom), stroke: st.stroke };
+      run(
+        st.name,
+        "leoApplyFontStyle(" + JSON.stringify(payload) + "," + (useRange ? range.start : -1) + "," + (useRange ? range.end : -1) + ")",
+      );
+    };
+    const isApplied = (st) => {
+      if (!info || !info.count) return false;
+      if (useRange) return (info.ranges || []).some((r) => r.name === st.name && r.start === range.start && r.end === range.end);
+      return info.whole === st.name;
+    };
+    const picked = useRange ? shownText.slice(range.start, range.end).replace(/\s+/g, " ").trim() : "";
+    const sample = (picked || shownText.split(/\s+/).filter(Boolean).slice(0, 2).join(" ") || "AURA").slice(0, 16);
+    const hint = "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85";
+    let target;
+    if (!info) target = "Reading the selected layer...";
+    else if (info.needsRestart) target = "Restart After Effects to load the Font Presets tab.";
+    else if (!info.count) target = "Select a text layer in After Effects.";
+    else if (info.count > 1) target = info.count + " text layers selected: styles go on the whole layers.";
+    else if (useRange) target = "Only: \u201C" + picked + "\u201D";
+    else target = "Whole layer: " + info.layer;
+    return J["jsxs"]("div", {
+      className: "space-y-2",
+      onMouseEnter: () => refresh(),
+      children: [
+        J["jsx"]("div", {
+          className: hint,
+          style: { marginTop: 0 },
+          children:
+            "Select a text layer, then click a style for the whole layer. To style only some words, highlight them in the box below first. Click a style again to remove it.",
+        }),
+        info &&
+          info.count === 1 &&
+          J["jsx"]("textarea", {
+            ref: boxRef,
+            readOnly: true,
+            value: shownText,
+            rows: Math.min(4, Math.max(2, shownText.split("\n").length)),
+            onMouseUp: readSelection,
+            onKeyUp: readSelection,
+            onSelect: readSelection,
+            spellCheck: false,
+            className: "w-full rounded-lg border border-border/80 bg-secondary/55 font-mono text-foreground",
+            style: { resize: "none", padding: "7px 9px", fontSize: 12, lineHeight: 1.45, cursor: "text", outline: "none" },
+            title: "Highlight words here to style only those",
+          }),
+        J["jsxs"]("div", {
+          className: hint,
+          style: { marginTop: 0, display: "flex", alignItems: "center", gap: 8, color: useRange ? "hsl(190 90% 70%)" : undefined },
+          children: [
+            J["jsx"]("span", { style: { flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, children: target }),
+            useRange &&
+              J["jsx"]("button", {
+                type: "button",
+                onClick: wholeLayer,
+                style: { textDecoration: "underline", cursor: "pointer", flexShrink: 0 },
+                children: "Use whole layer",
+              }),
+          ],
+        }),
+        J["jsx"]("div", {
+          className: "grid grid-cols-2 gap-2",
+          children: _leoFontStyles.map((st) => {
+            const on = isApplied(st);
+            return J["jsxs"](
+              "button",
+              {
+                type: "button",
+                onClick: () => apply(st),
+                disabled: busy,
+                title: on ? "Applied. Click to remove it." : useRange ? "Apply to the highlighted words" : "Apply to the whole layer",
+                className: on
+                  ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+                  : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+                style: { textAlign: "left", cursor: busy ? "wait" : "pointer" },
+                children: [
+                  J["jsx"]("span", {
+                    style: {
+                      display: "inline-block",
+                      maxWidth: "100%",
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      padding: "1px 4px 1px 1px",
+                      fontFamily: '"Montserrat", "Poppins", "Arial Black", Impact, sans-serif',
+                      fontWeight: 900,
+                      fontStyle: "italic",
+                      fontSize: 17,
+                      lineHeight: 1.15,
+                      letterSpacing: "0.02em",
+                      textTransform: "uppercase",
+                      backgroundImage: "linear-gradient(180deg, " + st.top + ", " + st.bottom + ")",
+                      WebkitBackgroundClip: "text",
+                      backgroundClip: "text",
+                      color: "transparent",
+                      WebkitTextStroke: "1px " + st.stroke,
+                    },
+                    children: sample,
+                  }),
+                  J["jsx"]("div", {
+                    className: hint,
+                    children: on ? "\u2713 Applied \u00b7 click to remove" : st.name,
+                  }),
+                ],
+              },
+              st.name,
+            );
+          }),
+        }),
+        info &&
+          info.count > 0 &&
+          J["jsx"]("button", {
+            type: "button",
+            onClick: () => run("Clear font styles", "leoClearFontStyles()"),
+            disabled: busy,
+            className: hint,
+            style: { textDecoration: "underline", cursor: "pointer" },
+            children: "Clear all font styles from the selected layers",
+          }),
+      ],
+    });
+  }
+  // Animations tab: .ffx presets bundled in <extension>/animations/<Section>/ (drop more files in and Reload).
+  const _leoIconAnimations = _0x356675("LeoSparkles", [
+    ["path", { d: "M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z", key: "leo-sp-a" }],
+    ["path", { d: "M20 3v4", key: "leo-sp-b" }],
+    ["path", { d: "M22 5h-4", key: "leo-sp-c" }],
+    ["path", { d: "M4 17v2", key: "leo-sp-d" }],
+    ["path", { d: "M5 18H3", key: "leo-sp-e" }],
+  ]);
+  // <extension> folder from the panel's own URL (.../dripz_edit_script/dist-ae2020/index.html).
+  function _leoExtensionRoot() {
+    try {
+      const p = decodeURIComponent(window.location.pathname || "").replace(/^\/([A-Za-z]:)/, "$1");
+      return p.replace(/\/dist-ae2020\/[^/]*$/, "");
+    } catch (e) {
+      return "";
+    }
+  }
+  let _leoAnimCache = null; // loaded once per panel session (Reload re-reads the folder)
+  function _leoAnimationsPanel() {
+    const J = _0xf553ed;
+    const R = _0x4c7c86;
+    const root = JSON.stringify(_leoExtensionRoot());
+    const [list, setList] = R["useState"](_leoAnimCache);
+    const [error, setError] = R["useState"]("");
+    const [query, setQuery] = R["useState"]("");
+    const [section, setSection] = R["useState"]("CC");
+    const [busy, setBusy] = R["useState"](false);
+    const [last, setLast] = R["useState"]("");
+    const load = async (force) => {
+      if (_leoAnimCache && !force) return;
+      setError("");
+      try {
+        const res = String((await _0xc1c86d("leoListAnimations(" + root + ")")) || "");
+        if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Animations tab.");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+        _leoAnimCache = JSON.parse(res || "[]");
+        setList(_leoAnimCache);
+        if (force) _0x43c87d["success"]("Loaded " + _leoAnimCache.length + " animations");
+      } catch (e) {
+        setError(e && e.message ? e.message : String(e));
+        setList([]);
+      }
+    };
+    R["useEffect"](() => {
+      load(false);
+    }, []);
+    const all = list || [];
+    const sections = [];
+    all.forEach((p) => {
+      if (sections.indexOf(p.g) === -1) sections.push(p.g);
+    });
+    if (sections.length && sections.indexOf(section) === -1) setSection(sections[0]);
+    const count = (g) => all.filter((p) => p.g === g).length;
+    const q = query.trim().toLowerCase();
+    const shown = all.filter((p) => (q ? p.n.toLowerCase().indexOf(q) !== -1 || p.g.toLowerCase().indexOf(q) !== -1 : p.g === section));
+    const apply = async (p) => {
+      if (busy) return;
+      setBusy(true);
+      setLast(p.p);
+      try {
+        // Template packs (.aep) drop a new layer; presets (.ffx) apply to the selected layers.
+        const script = p.c
+          ? "leoApplyTemplate(" + JSON.stringify(p.p) + "," + JSON.stringify(p.c) + "," + Number(p.i) + "," + JSON.stringify(p.n) + ")"
+          : "leoApplyAnimation(" + JSON.stringify(p.p) + ")";
+        const res = String((await _0xc1c86d(script)) || "");
+        if (/^EvalScript error/i.test(res)) throw new Error("Restart After Effects to load the Animations tab.");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+        _0x43c87d["success"](res, { description: p.c ? "Ctrl+Z removes it. The text is inside the new layer." : "Ctrl+Z removes it." });
+      } catch (e) {
+        _0x43c87d["error"](p.n, { description: e && e.message ? e.message : String(e) });
+      } finally {
+        setBusy(false);
+      }
+    };
+    const openFolder = async () => {
+      try {
+        const res = String((await _0xc1c86d("leoOpenAnimationsFolder(" + root + ")")) || "");
+        if (_0x2113ce(res)) throw new Error(res.replace(/^error[:\s]*/i, ""));
+      } catch (e) {
+        _0x43c87d["error"]("Could not open the folder", { description: e && e.message ? e.message : String(e) });
+      }
+    };
+    const hint = "mt-1 text-[9px] font-mono leading-relaxed text-muted-foreground/85";
+    const chip = (name) =>
+      J["jsx"](
+        "button",
+        {
+          type: "button",
+          onClick: () => {
+            setSection(name);
+            setQuery("");
+          },
+          className: "text-[9px] font-mono",
+          style: {
+            padding: "4px 8px",
+            borderRadius: 7,
+            border: "1px solid " + (name === section && !q ? "hsl(270 85% 65% / 0.55)" : "hsl(220 15% 40% / 0.35)"),
+            background: name === section && !q ? "hsl(270 85% 60% / 0.18)" : "hsl(220 18% 16% / 0.8)",
+            color: name === section && !q ? "hsl(270 100% 92%)" : "hsl(220 15% 75%)",
+            cursor: "pointer",
+          },
+          children: name + " " + count(name),
+        },
+        name,
+      );
+    return J["jsxs"]("div", {
+      className: "space-y-2",
+      children: [
+        J["jsx"]("div", {
+          className: hint,
+          style: { marginTop: 0 },
+          children: "Select a layer (or an adjustment layer), put the playhead where it should start, then click an animation.",
+        }),
+        J["jsx"](_0x4ec336, {
+          placeholder: "Search animations (e.g. shake, glow, twixtor)...",
+          value: query,
+          onChange: (e) => setQuery(e.target.value),
+          className: "h-9 text-[10px] bg-secondary/55 border-border/80 font-mono focus-visible:ring-primary/30",
+        }),
+        !q &&
+          sections.length > 0 &&
+          J["jsx"]("div", {
+            style: { display: "flex", flexWrap: "wrap", gap: 6 },
+            children: sections.map(chip),
+          }),
+        list === null && J["jsx"]("div", { className: hint, children: "Loading animations..." }),
+        error && J["jsx"]("div", { className: hint, style: { color: "hsl(0 80% 70%)" }, children: error }),
+        list !== null &&
+          !shown.length &&
+          !error &&
+          J["jsx"]("div", { className: hint, children: q ? "No animations match your search." : "No animations in this section yet." }),
+        J["jsx"]("div", {
+          style: { maxHeight: 380, overflowY: "auto", paddingRight: 2 },
+          children: J["jsx"]("div", {
+            className: "grid grid-cols-2 gap-2",
+            children: shown.map((p) =>
+              J["jsxs"](
+                "button",
+                {
+                  type: "button",
+                  onClick: () => apply(p),
+                  disabled: busy,
+                  title: p.c ? "Add " + p.n + " at the playhead (new layer)" : "Apply " + p.n + " at the playhead",
+                  className:
+                    last === p.p
+                      ? "relative overflow-hidden rounded-xl border border-cyan-300/20 bg-[linear-gradient(180deg,hsl(190_90%_55%_/_0.11),hsl(var(--card)/0.98),hsl(var(--secondary)/0.3))] p-2 shadow-[0_10px_22px_hsl(190_80%_50%_/_0.08)]"
+                      : "relative overflow-hidden rounded-xl border border-cyan-300/18 bg-[linear-gradient(180deg,hsl(220_18%_15%_/_0.94),hsl(220_18%_13%_/_0.98))] p-2.5 shadow-[inset_0_1px_0_hsl(255_255_255_/_0.03),0_14px_26px_hsl(220_35%_5%_/_0.18)]",
+                  style: { textAlign: "left", cursor: busy ? "wait" : "pointer" },
+                  children: [
+                    J["jsx"]("div", {
+                      className: "text-[11px] font-mono font-semibold text-foreground",
+                      style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+                      children: p.n,
+                    }),
+                    (q || p.c) && J["jsx"]("div", { className: hint, children: p.c ? "Template \u00b7 adds a new layer" : p.g }),
+                  ],
+                },
+                p.p,
+              ),
+            ),
+          }),
+        }),
+        J["jsxs"]("div", {
+          style: { display: "flex", gap: 12 },
+          children: [
+            J["jsx"]("button", {
+              type: "button",
+              onClick: openFolder,
+              className: hint,
+              style: { textDecoration: "underline", cursor: "pointer" },
+              children: "Open animations folder",
+            }),
+            J["jsx"]("button", {
+              type: "button",
+              onClick: () => load(true),
+              className: hint,
+              style: { textDecoration: "underline", cursor: "pointer" },
+              children: "Reload",
+            }),
+          ],
         }),
       ],
     });
@@ -82945,6 +83420,24 @@ var kK = Object[_0x332234(0xf4f)],
         [_0x161ea8, _0x5244f5] = _0x4c7c86[_0x2de660(0xc88)](!0x1),
         [_0x4f5c5b, _0x42d08d] = _0x4c7c86[_0x2de660(0xc88)](_0x3d6cb8),
         [_0x5413d3, _0x105d37] = _0x4c7c86[_0x2de660(0xc88)](_0x565f18);
+      const [_leoHiddenTabs, _leoSetHiddenTabs] = _0x4c7c86["useState"](_leoReadHiddenTabs);
+      const _leoToggleTab = (id) => {
+        const next =
+          _leoHiddenTabs.indexOf(id) === -1 ? _leoHiddenTabs.concat([id]) : _leoHiddenTabs.filter((t) => t !== id);
+        if (_0x16a70a.every((t) => next.indexOf(t) !== -1)) {
+          _0x43c87d["error"]("Keep at least one tab visible.");
+          return;
+        }
+        _leoSetHiddenTabs(next);
+        try {
+          localStorage.setItem(_leoHiddenTabsKey, JSON.stringify(next));
+        } catch (e) {}
+      };
+      _0x4c7c86["useEffect"](() => {
+        if (_leoHiddenTabs.indexOf(_0x3b10e3) === -1) return;
+        const first = _0x565f18.find((t) => _leoHiddenTabs.indexOf(t) === -1);
+        if (first) _0x27b39d(first);
+      }, [_leoHiddenTabs, _0x3b10e3, _0x565f18]);
       (_0x4c7c86[_0x2de660(0xc88)](null), _0x4c7c86["useState"](null));
       const [_0x12851b, _0x2ef739] = _0x4c7c86[_0x2de660(0xc88)](null),
         [_0x3ad2eb, _0x3f424a] = _0x4c7c86[_0x2de660(0xc88)](null);
@@ -83563,12 +84056,20 @@ var kK = Object[_0x332234(0xf4f)],
             label: "Presets",
             icon: _0xf553ed["jsx"](_leoIconPresets, { size: 0xf }),
           },
+          fonts: {
+            label: "Font Presets",
+            icon: _0xf553ed["jsx"](_leoIconFonts, { size: 0xf }),
+          },
+          animations: {
+            label: "Animations",
+            icon: _0xf553ed["jsx"](_leoIconAnimations, { size: 0xf }),
+          },
           audio: {
             label: "Audio",
             icon: _0xf553ed["jsx"](_leoIconAudio, { size: 0xf }),
           },
         },
-        _0x51933f = _0x161ea8 ? _0x5413d3 : _0x565f18;
+        _0x51933f = _0x161ea8 ? _0x5413d3 : _0x565f18["filter"]((t) => _leoHiddenTabs.indexOf(t) === -1);
       return _0x18644e
         ? _0xf553ed[_0x2de660(0x72a)](_0x348806, {
             onStart: () => _0x153c68(!0x1),
@@ -83591,7 +84092,8 @@ var kK = Object[_0x332234(0xf4f)],
                             "relative\x20w-10\x20h-10\x20rounded-xl\x20flex\x20items-center\x20justify-center\x20group\x20shrink-0",
                           children: [
                             _0xf553ed[_0x2de660(0x72a)](_0x2de660(0x487), {
-                              className: _0x2de660(0x329),
+                              className:
+                                "absolute\x20inset-0\x20rounded-xl\x20bg-gradient-to-br\x20from-primary\x20via-accent\x20to-primary\x20opacity-50\x20blur-[1px]",
                             }),
                             _0xf553ed[_0x2de660(0x72a)](_0x2de660(0x487), {
                               className: _0x2de660(0x130e),
@@ -83612,7 +84114,7 @@ var kK = Object[_0x332234(0xf4f)],
                               "truncate\x20text-[13px]\x20font-mono\x20font-bold\x20tracking-tight\x20leading-tight",
                             children: _0xf553ed[_0x2de660(0x72a)]("span", {
                               className:
-                                "bg-gradient-to-r\x20from-foreground\x20via-primary\x20to-foreground\x20bg-[length:200%_auto]\x20animate-[text-shimmer_4s_ease-in-out_infinite]\x20bg-clip-text\x20text-transparent",
+                                "bg-gradient-to-r\x20from-foreground\x20via-primary\x20to-foreground\x20bg-[length:200%_auto]\x20bg-clip-text\x20text-transparent",
                               children: "LEO",
                             }),
                           }),
@@ -84437,6 +84939,18 @@ var kK = Object[_0x332234(0xf4f)],
                         icon: _0xf553ed["jsx"](_leoIconPresets, { size: 0xe }),
                         children: _0xf553ed["jsx"](_leoPresetsPanel, {}),
                       }),
+                    _0x3b10e3 === "fonts" &&
+                      _0xf553ed["jsx"](_0x4dc2f3, {
+                        title: "Font Presets",
+                        icon: _0xf553ed["jsx"](_leoIconFonts, { size: 0xe }),
+                        children: _0xf553ed["jsx"](_leoFontPresetsPanel, {}),
+                      }),
+                    _0x3b10e3 === "animations" &&
+                      _0xf553ed["jsx"](_0x4dc2f3, {
+                        title: "Animations",
+                        icon: _0xf553ed["jsx"](_leoIconAnimations, { size: 0xe }),
+                        children: _0xf553ed["jsx"](_leoAnimationsPanel, {}),
+                      }),
                     _0x3b10e3 === "audio" &&
                       _0xf553ed["jsx"](_0x4dc2f3, {
                         title: "Audio Enhancer",
@@ -84459,6 +84973,9 @@ var kK = Object[_0x332234(0xf4f)],
                   currentUiScale: _0x10e6b8,
                   onUiScaleChange: _0x2978f3,
                   onCustomizeLayout: _0x5b4421,
+                  leoTabs: _0x565f18["map"]((t) => ({ id: t, label: _0x108464[t] ? _0x108464[t]["label"] : t })),
+                  leoHiddenTabs: _leoHiddenTabs,
+                  onLeoToggleTab: _leoToggleTab,
                 }),
                 _0xf553ed[_0x2de660(0x72a)](_0x3d1fa1, {
                   open: _0x2661d2,

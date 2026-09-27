@@ -1,0 +1,8 @@
+# LEO templates in Bh4vyafx Text Pack.aep (converted to AE 2023). Each line: <n>: <name>
+# n = nth layer, in time order, of the showcase comp below. Clicking one copies that layer (with its glow) into your comp.
+comp: Pre-comp 6
+1: Bh4vyafx Text 1
+2: Bh4vyafx Text 2
+3: Bh4vyafx Text 3
+4: Bh4vyafx Text 4
+5: Bh4vyafx Text 5
