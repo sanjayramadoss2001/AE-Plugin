@@ -48,6 +48,23 @@
     { id: "fadescale", label: "Fade Up + Scale", note: "Fade Up Words while the caption zooms in from 100% to 120%, easy ease" },
   ];
 
+  // Caption text preset timing (the old "Preset KF" setting, same localStorage key):
+  // "stretch" fits the preset's animation to each caption, "keep" plays it at the preset's own speed.
+  // The old "chain" modes changed caption lengths (overlapping captions), so they map onto these two.
+  var KEY_PRESET_KF = "dripz_caption_preset_kf_mode";
+  var PRESET_TIMINGS = [
+    { id: "stretch", label: "Stretch", note: "The text preset's animation is stretched to fit each caption" },
+    { id: "keep", label: "Keep", note: "The text preset plays at its own speed from each caption's start" },
+  ];
+  function currentPresetTiming() {
+    var v = readSetting(KEY_PRESET_KF, "stretch");
+    return v === "keep" || v === "chain" ? "keep" : "stretch";
+  }
+  function setPresetTiming(id) {
+    writeSetting(KEY_PRESET_KF, id === "keep" ? "keep" : "stretch");
+    notify();
+  }
+
   function currentAnimation() {
     // v2: "Fade up" used to add a rise; users who picked it wanted AE's Fade Up Words look -> "fade".
     if (readSetting("leo_caption_animation_v2", "") !== "1") {
@@ -212,6 +229,8 @@
       animations: ANIMATIONS,
       cleanVoice: readSetting(KEY_CLEAN_VOICE, "1") !== "0",
       captionStyle: currentStyleId(),
+      presetTiming: currentPresetTiming(),
+      presetTimings: PRESET_TIMINGS,
       aiInstalled: supported && isAiInstalled(),
       aiMB: Math.round((AI.engineBytes + AI.modelBytes) / 1e6),
       captionStyles: [CAPTION_STYLES.single, CAPTION_STYLES.voice, CAPTION_STYLES.long],
@@ -471,6 +490,17 @@
 
   var PUNCT_ONLY = /^[\s.,!?;:"'`()\[\]{}\u2026\u00bf\u00a1\u0964\u0965\-]+$/;
   var LATIN = /[A-Za-z]/;
+  // Whisper writes "- " when the speaker changes ("- Yeah. - Actually..."); with one segment per word that
+  // dash arrives as its own "word". A word needs a letter or digit, and a dash stuck to its front is dropped
+  // (hyphens inside words, like "so-called", stay).
+  var HAS_WORD_CHAR = (function () {
+    try {
+      return new RegExp("[\\p{L}\\p{N}]", "u");
+    } catch (e) {
+      return /[0-9A-Za-z\u00C0-\u024F\u0370-\u052F\u0590-\u06FF\u0900-\u0DFF\u0E00-\u0EFF\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF]/;
+    }
+  })();
+  var LEADING_DASH = /^[-\u2010-\u2015\u2212]+\s*/;
 
   // DTW (-dtw) token times are far more accurate than whisper's own token offsets: measured on an
   // exact-timing test clip, word starts ~50 ms off (vs ~0.9 s with large-v3-turbo offsets) and ends
@@ -488,8 +518,8 @@
     var words = [];
     var prevEnd = 0;
     segments.forEach(function (seg) {
-      var text = String(seg.text || "").trim();
-      if (!text) return;
+      var text = String(seg.text || "").trim().replace(LEADING_DASH, "");
+      if (!text || !HAS_WORD_CHAR.test(text)) return;
       var start = seg.offsets.from / 1000;
       var end = seg.offsets.to / 1000;
       // With --split-on-word each segment is one word; its "to" can stretch across the pause after
@@ -1027,6 +1057,7 @@
     setCaptionPreset: setCaptionPreset,
     setCleanVoice: setCleanVoice,
     setCaptionStyle: setCaptionStyle,
+    setPresetTiming: setPresetTiming,
     installAI: installAI,
     groupWithAI: groupWithAI,
     segmentLines: segmentLines,

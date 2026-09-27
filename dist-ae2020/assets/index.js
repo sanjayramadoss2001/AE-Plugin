@@ -70888,6 +70888,8 @@ var kK = Object[_0x332234(0xf4f)],
                     JSON.stringify("DRIPZ_CAPTION_GROUP::" + _0x4090d1) +
                     "," +
                     JSON.stringify(_leoCp.path) +
+                    "," +
+                    JSON.stringify(window.LeoOfflineCaptions.getStatus().presetTiming || "stretch") +
                     ")",
                 )) || "",
               );
@@ -82135,6 +82137,25 @@ var kK = Object[_0x332234(0xf4f)],
                 children: s.captionStyles.map((c) =>
                   card(c.id, c.id === s.captionStyle, c.label, null, c.note, () => api.setCaptionStyle(c.id)),
                 ),
+              }),
+            ],
+          }),
+        s.presetTimings &&
+          api.setPresetTiming &&
+          J["jsxs"]("div", {
+            children: [
+              J["jsx"]("label", { className: label, children: "Preset timing" }),
+              J["jsx"]("div", {
+                className: "grid grid-cols-2 gap-2",
+                children: s.presetTimings.map((p) =>
+                  card(p.id, p.id === s.presetTiming, p.label, null, p.note, () => api.setPresetTiming(p.id)),
+                ),
+              }),
+              J["jsx"]("div", {
+                className: hint,
+                children: s.captionPreset
+                  ? "Caption text preset: " + s.captionPreset.name
+                  : "Choose a caption text preset in the Presets tab (Use for all captions).",
               }),
             ],
           }),

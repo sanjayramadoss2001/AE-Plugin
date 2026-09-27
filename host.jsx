@@ -6693,9 +6693,74 @@ function leoApplyPresetToSelected(presetPath) {
     return "Applied \"" + File.decode(file.name).replace(/\.ffx$/i, "") + "\" to " + applied + " layer" + (applied === 1 ? "" : "s") + ".";
 }
 
+// Caption text preset "Stretch": only what the preset added - new text animators / effects, and Transform
+// properties that had no keys before - is retimed to the caption's in -> out. Keys already on the layer
+// (LEO Word Fade, the Fade Up + Scale zoom) stay exactly where they are.
+function _leoPresetKeySnapshot(layer) {
+    var snap = { groups: {}, transform: [] };
+    var groups = _leoPresetGroups(layer);
+    for (var g = 0; g < groups.length; g++) snap.groups[groups[g]] = _leoPresetGroup(layer, groups[g]).numProperties;
+    try {
+        var tf = layer.property("ADBE Transform Group");
+        for (var i = 1; i <= tf.numProperties; i++) {
+            var n = 0;
+            try { n = tf.property(i).numKeys || 0; } catch (eKeys) {}
+            snap.transform.push(n);
+        }
+    } catch (eTf) {}
+    return snap;
+}
+
+function _leoPresetAddedKeyProps(layer, snap) {
+    var props = [];
+    var groups = _leoPresetGroups(layer);
+    for (var g = 0; g < groups.length; g++) {
+        var grp = _leoPresetGroup(layer, groups[g]);
+        for (var i = (snap.groups[groups[g]] || 0) + 1; i <= grp.numProperties; i++) {
+            _collectKeyframedPropsRecursive(grp.property(i), props);
+        }
+    }
+    try {
+        var tf = layer.property("ADBE Transform Group");
+        for (var t = 1; t <= tf.numProperties; t++) {
+            try {
+                var p = tf.property(t);
+                if ((snap.transform[t - 1] || 0) === 0 && p.numKeys > 0) props.push(p);
+            } catch (eKey) {}
+        }
+    } catch (eTf) {}
+    return props;
+}
+
+// One linear map for all of the preset's keys (first key -> in point, last key -> out point), so the
+// preset's parts keep their timing relative to each other. Eases are kept; their speeds are rescaled.
+function _leoStretchPresetKeysToLayer(props, layer) {
+    var first = null;
+    var last = null;
+    for (var i = 0; i < props.length; i++) {
+        for (var k = 1; k <= props[i].numKeys; k++) {
+            var t = props[i].keyTime(k);
+            if (first === null || t < first) first = t;
+            if (last === null || t > last) last = t;
+        }
+    }
+    var tIn = Number(layer.inPoint);
+    var tOut = Number(layer.outPoint);
+    if (first === null || !(last > first) || !(tOut > tIn)) return 0;
+    var ratio = (tOut - tIn) / (last - first);
+    var moved = 0;
+    for (var p = 0; p < props.length; p++) {
+        var items = [];
+        for (var j = 1; j <= props[p].numKeys; j++) items.push({ idx: j, newT: tIn + (props[p].keyTime(j) - first) * ratio });
+        moved += _retimePropWithMappedTimes(props[p], items, 1 / ratio);
+    }
+    return moved;
+}
+
 // Applies the caption text preset to every caption layer of an apply group, once per layer
 // (a "LEO_PRESET::" line in the comment marks styled layers, so Rebuild doesn't stack presets).
-function leoApplyPresetToCaptionGroup(groupTag, presetPath) {
+// timing: "stretch" = fit the preset's keyframes to each caption, anything else = keep the preset's own speed.
+function leoApplyPresetToCaptionGroup(groupTag, presetPath, timing) {
     var comp = _aeActiveComp();
     if (!comp) return "Error: Open the caption composition first.";
     var file = new File(presetPath);
@@ -6713,6 +6778,7 @@ function leoApplyPresetToCaptionGroup(groupTag, presetPath) {
     var savedTime = comp.time;
     var applied = 0;
     var skipped = 0;
+    var stretched = 0;
     app.beginUndoGroup("Caption Text Preset");
     try {
         for (var t = 0; t < targets.length; t++) {
@@ -6721,8 +6787,12 @@ function leoApplyPresetToCaptionGroup(groupTag, presetPath) {
             if (comment.indexOf("LEO_PRESET::") !== -1) { skipped++; continue; }
             var wasLocked = layer.locked;
             if (wasLocked) layer.locked = false;
+            var snap = timing === "stretch" ? _leoPresetKeySnapshot(layer) : null;
             if (_applyPresetPathsToLayer(comp, layer, [file.fsName]) > 0) {
                 applied++;
+                if (snap) {
+                    try { if (_leoStretchPresetKeysToLayer(_leoPresetAddedKeyProps(layer, snap), layer) > 0) stretched++; } catch (eStretch) {}
+                }
                 try { layer.comment = comment + "\n" + "LEO_PRESET::" + name; } catch (eComment) {}
             }
             if (wasLocked) layer.locked = true;
@@ -6734,7 +6804,7 @@ function leoApplyPresetToCaptionGroup(groupTag, presetPath) {
         app.endUndoGroup();
     }
     return "Text preset \"" + name + "\" applied to " + applied + " caption" + (applied === 1 ? "" : "s") +
-        (skipped ? " (" + skipped + " already styled)" : "") + ".";
+        (stretched ? ", stretched to fit" : "") + (skipped ? " (" + skipped + " already styled)" : "") + ".";
 }
 
 
